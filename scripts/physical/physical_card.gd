@@ -20,22 +20,24 @@ func _ready() -> void:
 			mesh_instance = child
 			break
 	
-	# Tạo material mặt sau
+	# Tạo material mặt sau — dùng LINEAR filter để tránh viền đen
 	_back_material = StandardMaterial3D.new()
 	_back_material.albedo_texture = CardTextureGenerator.get_back_texture()
 	_back_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_back_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	_back_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_back_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	
 	if mesh_instance:
 		mesh_instance.material_override = _back_material
 
 func set_card_data(data: Card) -> void:
 	card_data = data
-	# Tạo material mặt trước
+	# Tạo material mặt trước — dùng LINEAR filter để tránh viền đen
 	_front_material = StandardMaterial3D.new()
 	_front_material.albedo_texture = CardTextureGenerator.get_card_texture(card_data)
 	_front_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_front_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	_front_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_front_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_update_visuals()
 
 func _update_visuals() -> void:

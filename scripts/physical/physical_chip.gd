@@ -13,20 +13,22 @@ func _ready() -> void:
 	max_contacts_reported = 2
 	body_entered.connect(_on_body_entered)
 	
-	mass = 0.02 # Chip khá nhẹ
+	mass = 0.04
+	linear_damp = 2.0    # Giảm tốc nhanh hơn
+	angular_damp = 3.0   # Hết quay nhanh hơn
 	physics_material_override = PhysicsMaterial.new()
-	physics_material_override.friction = 0.6
-	physics_material_override.bounce = 0.3 # Vẫn nảy một chút khi đập xuống bàn
+	physics_material_override.friction = 0.8
+	physics_material_override.bounce = 0.08 # Gần như không nảy
 
 func _physics_process(delta: float) -> void:
 	if is_settled:
 		return
 		
-	if linear_velocity.length() < 0.1 and angular_velocity.length() < 0.1:
+	if linear_velocity.length() < 0.05 and angular_velocity.length() < 0.05:
 		time_settled += delta
-		if time_settled > 1.0:
-			# Ngủ để tiết kiệm bộ nhớ khi chip nằm im lìm trên bàn
-			sleeping = true
+		if time_settled > 0.3:
+			# Đông cứng hoàn toàn — không rung lắc nữa
+			freeze = true
 			is_settled = true
 	else:
 		time_settled = 0.0
@@ -52,20 +54,23 @@ func throw_towards(target_position: Vector3, throw_force: float = 3.0) -> void:
 
 func set_value(val: int) -> void:
 	denom_value = val
-	var color = Color(0.8, 0.2, 0.2) # Default red ($10)
+	var color = Color(0.8, 0.15, 0.15) # Default red ($10)
 	if val >= 500:
-		color = Color(0.6, 0.2, 0.6) # Purple
+		color = Color(0.5, 0.15, 0.5) # Purple
 	elif val >= 100:
-		color = Color(0.1, 0.1, 0.1) # Black
+		color = Color(0.12, 0.12, 0.12) # Black
 	elif val >= 50:
-		color = Color(0.1, 0.6, 0.2) # Green
+		color = Color(0.12, 0.55, 0.2) # Green
 	elif val >= 25:
-		color = Color(0.1, 0.3, 0.8) # Blue
+		color = Color(0.12, 0.3, 0.75) # Blue
 	
 	for child in get_children():
-		if child is MeshInstance3D:
+		if child is MeshInstance3D and child.name == "MeshInstance3D":
 			var mat = StandardMaterial3D.new()
 			mat.albedo_color = color
+			mat.metallic = 0.3
+			mat.metallic_specular = 0.6
+			mat.roughness = 0.35
 			child.material_override = mat
 			break
 

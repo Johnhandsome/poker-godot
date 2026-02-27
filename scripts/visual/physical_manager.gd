@@ -69,24 +69,26 @@ func _build_card_prefab() -> PackedScene:
 	var col = CollisionShape3D.new()
 	var box = BoxShape3D.new()
 	
-	# Tính theo đúng tỷ lệ 512x768 của tấm texture
-	var aspect_u = 512.0 / 768.0
-	var h = 0.63
-	var w = h * aspect_u
+	# Tính theo đúng tỷ lệ 226x314 của asset PNG thật
+	var card_w = 226.0
+	var card_h = 314.0
+	var h = 0.95
+	var w = h * (card_w / card_h)
 	box.size = Vector3(w, h, 0.01) 
 	col.shape = box
 	root.add_child(col)
 	col.owner = root # Quan trọng: để pack() lưu node này
 	
 	var mesh_inst = MeshInstance3D.new()
-	var mesh = BoxMesh.new() # Dùng BoxMesh chuẩn
-	mesh.size = box.size
+	# Dùng QuadMesh thay vì BoxMesh — hiển thị đúng toàn bộ texture lên mặt phẳng
+	var mesh = QuadMesh.new()
+	mesh.size = Vector2(w, h)
 	
 	var mat = StandardMaterial3D.new()
 	mat.albedo_color = Color(1, 1, 1)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED # Đảm bảo bài luôn sáng rực
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	# BoxMesh tự động map nguyên một texture lên từng mặt, nên với bài tỷ lệ đúng thì sẽ nhìn như 2D
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED # Hiện cả 2 mặt (trước/sau)
 	mesh.material = mat
 	
 	mesh_inst.mesh = mesh
@@ -103,27 +105,52 @@ func _build_chip_prefab() -> PackedScene:
 	root.name = "PhysicalChip"
 	root.set_script(load("res://scripts/physical/physical_chip.gd"))
 	
+	# Collision — chip lớn hơn, dày hơn
 	var col = CollisionShape3D.new()
 	var cyl = CylinderShape3D.new()
-	cyl.radius = 0.05
-	cyl.height = 0.01
+	cyl.radius = 0.12
+	cyl.height = 0.025
 	col.shape = cyl
 	root.add_child(col)
 	col.owner = root
 	
+	# Mesh chính — chip poker tròn, mịn
 	var mesh_inst = MeshInstance3D.new()
 	var mesh = CylinderMesh.new()
 	mesh.top_radius = cyl.radius
 	mesh.bottom_radius = cyl.radius
 	mesh.height = cyl.height
+	mesh.radial_segments = 32  # Mịn tròn, không răng cưa
+	mesh.rings = 1
 	
 	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.2, 0.2) # Chip đỏ
+	mat.albedo_color = Color(0.8, 0.15, 0.15) # Chip đỏ mặc định
+	mat.metallic = 0.3
+	mat.metallic_specular = 0.6
+	mat.roughness = 0.35
 	mesh.material = mat
 	mesh_inst.mesh = mesh
 	mesh_inst.name = "MeshInstance3D"
 	root.add_child(mesh_inst)
 	mesh_inst.owner = root
+	
+	# Viền trắng (edge stripe) — vành mỏng quanh chip
+	var edge_mesh_inst = MeshInstance3D.new()
+	var edge_mesh = TorusMesh.new()
+	edge_mesh.inner_radius = cyl.radius - 0.008
+	edge_mesh.outer_radius = cyl.radius + 0.002
+	edge_mesh.rings = 24
+	edge_mesh.ring_segments = 12
+	
+	var edge_mat = StandardMaterial3D.new()
+	edge_mat.albedo_color = Color(0.9, 0.9, 0.85)
+	edge_mat.metallic = 0.2
+	edge_mat.roughness = 0.4
+	edge_mesh.material = edge_mat
+	edge_mesh_inst.mesh = edge_mesh
+	edge_mesh_inst.name = "EdgeStripe"
+	root.add_child(edge_mesh_inst)
+	edge_mesh_inst.owner = root
 	
 	var ap = AudioStreamPlayer3D.new()
 	ap.name = "AudioStreamPlayer3D"
@@ -146,8 +173,8 @@ func _on_player_drew_card(card: Card, player: Player) -> void:
 	_player_cards[player.id].append(p_card)
 	
 	var card_index = player.hole_cards.size() - 1
-	var offset_x = (card_index - 0.5) * 0.5 # Khoảng cách nhỏ lại
-	var offset_y = 0.15 + card_index * 0.005 # Tăng y một chút để tránh z-fighting
+	var offset_x = (card_index - 0.5) * 0.7 # Khoảng cách rộng hơn cho bài to
+	var offset_y = 0.02 + card_index * 0.003 # Sát mặt bàn
 	
 	if !player.is_ai:
 		# HUMAN: Đặt bài tĩnh, ngửa, trước mặt (BoxMesh đã nằm ngang sẵn)
@@ -189,13 +216,13 @@ func _on_community_cards_dealt(cards: Array) -> void:
 		var p_card = card_scene.instantiate() as PhysicalCard
 		add_child(p_card)
 		
-		# Vị trí giữa bàn, xếp hàng ngang cách nhau vừa vặn
-		var total_width = 0.6 * 4  # 5 cards max
+		# Vị trí giữa bàn, xếp hàng ngang cách nhau vừa vặn (bàn lớn hơn)
+		var total_width = 0.85 * 4  # 5 cards max
 		var start_x = -total_width / 2.0
-		var card_x = start_x + i * 0.6
+		var card_x = start_x + i * 0.85
 		
-		# Đặt tĩnh trên mặt bàn, nhích y lên tí để tránh z-fighting
-		p_card.global_position = Vector3(card_x, 0.1 + i * 0.005, 0)
+		# Đặt sát mặt bàn (y = 0.02 để vừa chìm vào nỉ)
+		p_card.global_position = Vector3(card_x, 0.02 + i * 0.002, 0)
 		p_card.rotation_degrees = Vector3(-90, 0, 0) # Xoay nằm phẳng xuống bàn
 		p_card.set_card_data(card)
 		p_card.is_face_up = true

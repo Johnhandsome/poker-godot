@@ -6,7 +6,7 @@ class_name TableBuilder
 @onready var game_manager = get_node("/root/GameManager")
 
 # Tinh chỉnh thông số bàn
-var table_radius: float = 3.5
+var table_radius: float = 5.0
 var num_players: int = 9
 
 # Danh sách các điểm ngồi
@@ -30,16 +30,19 @@ func _setup_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.05, 0.05, 0.08) # Không gian quán bar tối màu
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.2, 0.2, 0.25) # Ánh sáng nền mờ mờ
+	env.ambient_light_color = Color(0.35, 0.35, 0.38) # Ánh sáng nền sáng hơn để thấy rõ bàn
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES # Tone màu điện ảnh
 	env.glow_enabled = true
-	env.glow_intensity = 0.5
-	env.glow_strength = 0.8
-	env.glow_bloom = 0.1
+	env.glow_intensity = 0.4
+	env.glow_strength = 0.6
+	env.glow_bloom = 0.05
 	
 	var world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
+	
+	# Bật MSAA 4x để khử răng cưa viền bài và chip
+	get_viewport().msaa_3d = Viewport.MSAA_4X
 
 func _setup_table() -> void:
 	# 1. Tạo mặt bàn (Bầu dục hoặc tròn)
@@ -55,31 +58,37 @@ func _setup_table() -> void:
 	push_shape.shape = cyl_shape
 	table_static.add_child(push_shape)
 	
-	# Hình ảnh mặt bàn (Vải nỉ xanh lá/xanh biển)
+	# Hình ảnh mặt bàn — high-poly
 	var table_mesh_inst = MeshInstance3D.new()
 	var cyl_mesh = CylinderMesh.new()
 	cyl_mesh.top_radius = table_radius
 	cyl_mesh.bottom_radius = table_radius
 	cyl_mesh.height = 0.2
+	cyl_mesh.radial_segments = 64  # Mịn tròn
+	cyl_mesh.rings = 2
 	
 	var table_mat = StandardMaterial3D.new()
-	table_mat.albedo_color = Color(0.1, 0.4, 0.15) # Xanh nỉ
-	table_mat.roughness = 0.9 # Vải nỉ rất nhám
+	table_mat.albedo_color = Color(0.08, 0.38, 0.14) # Xanh nỉ
+	table_mat.roughness = 0.92 # Vải nỉ rất nhám
+	table_mat.metallic = 0.0
 	cyl_mesh.material = table_mat
 	
 	table_mesh_inst.mesh = cyl_mesh
 	table_static.add_child(table_mesh_inst)
 	table_static.position = Vector3(0, -0.1, 0)
 	
-	# 2. Tạo viền bàn bọc da
+	# 2. Tạo viền bàn bọc da — high-poly
 	var rim_mesh_inst = MeshInstance3D.new()
 	var tor_mesh = TorusMesh.new()
-	tor_mesh.inner_radius = table_radius - 0.1
-	tor_mesh.outer_radius = table_radius + 0.3
+	tor_mesh.inner_radius = table_radius - 0.15
+	tor_mesh.outer_radius = table_radius + 0.4
+	tor_mesh.rings = 48
+	tor_mesh.ring_segments = 24
 	
 	var rim_mat = StandardMaterial3D.new()
-	rim_mat.albedo_color = Color(0.2, 0.1, 0.0) # Nâu da
-	rim_mat.roughness = 0.4
+	rim_mat.albedo_color = Color(0.22, 0.11, 0.03) # Nâu da đậm
+	rim_mat.roughness = 0.35
+	rim_mat.metallic = 0.05
 	tor_mesh.material = rim_mat
 	
 	rim_mesh_inst.mesh = tor_mesh
@@ -117,12 +126,16 @@ func _setup_camera() -> void:
 	
 	main_camera = Camera3D.new()
 	main_camera.name = "MainCamera"
-	camera_base_pos = Vector3(0, 8.0, table_radius)
-	camera_base_rot = Vector3(-70, 0, 0)
+	
+	# Góc nhìn ngồi ghế: cao hơn (~3.8m) và lùi xa viền bàn (~2.0m)
+	var sit_z = table_radius + 2.0
+	camera_base_pos = Vector3(0, 3.8, sit_z)
+	# Chúi xuống ~40° để nhìn rõ community cards ở giữa bàn
+	camera_base_rot = Vector3(-40, 0, 0)
 	
 	main_camera.position = camera_base_pos
 	main_camera.rotation_degrees = camera_base_rot
-	main_camera.fov = 60
+	main_camera.fov = 65  # Rộng hơn để thấy toàn bàn
 	camera_rig.add_child(main_camera)
 	main_camera.add_to_group("Camera")
 	
@@ -148,17 +161,15 @@ func _process(delta: float) -> void:
 	_update_chips_labels()
 
 func _on_player_turn_started(player_id: String) -> void:
-	# Focus nhẹ (zoom) vào phía góc người chơi
+	# Focus nhẹ (dịch tầm nhìn) về phía người chơi đang hành động
 	is_focusing = true
 	var p = game_manager._get_player_by_id(player_id)
 	if p:
-		# Camera dịch một chút về hướng người chơi đó và hạ thấp tí xíu
+		# Từ góc nhìn ngồi: chỉ dịch nhẹ trái/phải và liếc mắt theo
 		var dir_to_player = p.seat_position.normalized()
-		target_camera_pos = camera_base_pos + (dir_to_player * 0.5)
-		target_camera_pos.y = camera_base_pos.y - 0.5
-		
-		# Góc chúi có thể lệch nhẹ
-		target_camera_rot = camera_base_rot + Vector3(0, dir_to_player.x * -5.0, 0)
+		target_camera_pos = camera_base_pos + Vector3(dir_to_player.x * 0.3, 0, 0)
+		# Liếc nhẹ sang trái/phải
+		target_camera_rot = camera_base_rot + Vector3(0, dir_to_player.x * -8.0, 0)
 
 func _on_game_state_changed(new_state: int, _old_state: int) -> void:
 	# Reset camera khi bắt đầu phân-phát bài hoặc đang chia bài mới
@@ -229,7 +240,7 @@ func _create_seat_marker(pos: Vector3, player: Player) -> void:
 	marker_mesh.look_at(Vector3.ZERO, Vector3.UP)
 	
 	# Dịch name tag lùi ra viền thêm chút
-	marker_mesh.translate(Vector3(0, 0, -0.3))
+	marker_mesh.translate(Vector3(0, 0, -0.9))
 	
 	# Tên người chơi (billboard để luôn quay mặt vào camera)
 	var name_label = Label3D.new()
