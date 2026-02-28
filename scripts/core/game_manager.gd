@@ -76,7 +76,7 @@ func start_game():
 			players.remove_at(i)
 			
 	if players.size() < 2:
-		emit_signal("game_message", SettingsManager.tc("Need at least 2 players to start.", "Cần ít nhất 2 người chơi để bắt đầu."))
+		emit_signal("game_message", _tc("Need at least 2 players to start.", "Cần ít nhất 2 người chơi để bắt đầu."))
 		return
 		
 	# Khởi tạo dealer ngẫu nhiên lần đầu tiên
@@ -99,7 +99,7 @@ func _start_new_round():
 		current_blind_level = new_level
 		small_blind = 10 * int(pow(2, current_blind_level - 1))
 		big_blind = 20 * int(pow(2, current_blind_level - 1))
-		var msg = SettingsManager.tc("[color=red][b]BLINDS LEVEL UP ", "[color=red][b]BLINDS LÊN CẤP ")
+		var msg = _tc("[color=red][b]BLINDS LEVEL UP ", "[color=red][b]BLINDS LÊN CẤP ")
 		emit_signal("game_message", msg + str(current_blind_level) + ": $" + str(small_blind) + "/$" + str(big_blind) + "[/b][/color]")
 	emit_signal("blinds_level_changed", current_blind_level, small_blind, big_blind)
 	
@@ -150,7 +150,7 @@ func _start_new_round():
 		return
 			
 	if active_players.size() < 2:
-		emit_signal("game_message", SettingsManager.tc("Game Over - Not enough players with chips.", "Trò chơi kết thúc - Không đủ người chơi còn tiền."))
+		emit_signal("game_message", _tc("Game Over - Not enough players with chips.", "Trò chơi kết thúc - Không đủ người chơi còn tiền."))
 		return
 		
 	# Vì danh sách active_players đã xoay bắt đầu từ SB, dealer luôn là người cuối cùng trong active_players
@@ -369,8 +369,8 @@ func _handle_showdown():
 	for p_id in payouts:
 		var p = _get_player_by_id(p_id)
 		p.chips += payouts[p_id]
-		var id_str = SettingsManager.tc("You", "Bạn") if p.id == "You" else p.id
-		var won_str = SettingsManager.tc(" won $", " thắng $")
+		var id_str = _tc("You", "Bạn") if p.id == "You" else p.id
+		var won_str = _tc(" won $", " thắng $")
 		emit_signal("game_message", id_str + won_str + str(payouts[p_id]) + "!")
 		
 	# Lưu tiến trình bankroll vào ổ cứng
@@ -507,3 +507,9 @@ func _get_player_by_id(id: String):
 		if p.id == id:
 			return p
 	return null
+
+func _tc(en: String, vi: String) -> String:
+	var sm = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	if sm and sm.has_method("tc"):
+		return sm.tc(en, vi)
+	return en
