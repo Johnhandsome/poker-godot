@@ -1,7 +1,0 @@
-res://scripts/core/game_manager.gd
-res://scripts/visual/physical_manager.gd
-res://scripts/main.gd
-res://scripts/ui/main_menu.gd
-res://scripts/core/network_manager.gd
-res://scripts/core/pot_manager.gd
-res://scripts/visual/table_builder.gd
