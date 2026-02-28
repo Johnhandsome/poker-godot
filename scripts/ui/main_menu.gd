@@ -77,9 +77,9 @@ func _ready() -> void:
 	# Nút Play
 	var btn_play = Button.new()
 	if current_chips > 0:
-		btn_play.text = SettingsManager.tc("PLAY GAME", "CHƠI TIẾP")
+		btn_play.text = _tc("PLAY GAME", "CHƠI TIẾP")
 	else:
-		btn_play.text = SettingsManager.tc("RESTART ($5000)", "CHƠI LẠI ($5000)")
+		btn_play.text = _tc("RESTART ($5000)", "CHƠI LẠI ($5000)")
 	btn_play.custom_minimum_size = Vector2(300, 70)
 	btn_play.add_theme_font_size_override("font_size", 32)
 	btn_play.focus_mode = Control.FOCUS_NONE
@@ -123,7 +123,7 @@ func _ready() -> void:
 	
 	# Nút Settings
 	var btn_settings = Button.new()
-	btn_settings.text = SettingsManager.tc("SETTINGS", "CÀI ĐẶT")
+	btn_settings.text = _tc("SETTINGS", "CÀI ĐẶT")
 	btn_settings.custom_minimum_size = Vector2(300, 60)
 	btn_settings.add_theme_font_size_override("font_size", 24)
 	btn_settings.focus_mode = Control.FOCUS_NONE
@@ -158,7 +158,7 @@ func _ready() -> void:
 	
 	# Nút Quit
 	var btn_quit = Button.new()
-	btn_quit.text = SettingsManager.tc("QUIT", "THOÁT")
+	btn_quit.text = _tc("QUIT", "THOÁT")
 	btn_quit.custom_minimum_size = Vector2(300, 60)
 	btn_quit.add_theme_font_size_override("font_size", 24)
 	btn_quit.focus_mode = Control.FOCUS_NONE
@@ -223,7 +223,7 @@ func _show_settings_panel() -> void:
 	panel.add_child(vbox)
 	
 	var title = Label.new()
-	title.text = SettingsManager.tc("SETTINGS", "CÀI ĐẶT")
+	title.text = _tc("SETTINGS", "CÀI ĐẶT")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 32)
 	vbox.add_child(title)
@@ -234,7 +234,7 @@ func _show_settings_panel() -> void:
 	var master_box = HBoxContainer.new()
 	master_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var master_lbl = Label.new()
-	master_lbl.text = SettingsManager.tc("Master Vol:", "Âm lượng tổng:")
+	master_lbl.text = _tc("Master Vol:", "Âm lượng tổng:")
 	master_lbl.custom_minimum_size = Vector2(140, 0)
 	var master_slider = HSlider.new()
 	master_slider.custom_minimum_size = Vector2(200, 30)
@@ -250,7 +250,7 @@ func _show_settings_panel() -> void:
 	var sfx_box = HBoxContainer.new()
 	sfx_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var sfx_lbl = Label.new()
-	sfx_lbl.text = SettingsManager.tc("SFX Vol:", "Âm thanh (FX):")
+	sfx_lbl.text = _tc("SFX Vol:", "Âm thanh (FX):")
 	sfx_lbl.custom_minimum_size = Vector2(140, 0)
 	var sfx_slider = HSlider.new()
 	sfx_slider.custom_minimum_size = Vector2(200, 30)
@@ -265,7 +265,7 @@ func _show_settings_panel() -> void:
 	var bgm_box = HBoxContainer.new()
 	bgm_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var bgm_lbl = Label.new()
-	bgm_lbl.text = SettingsManager.tc("Music Vol:", "Nhạc nền:")
+	bgm_lbl.text = _tc("Music Vol:", "Nhạc nền:")
 	bgm_lbl.custom_minimum_size = Vector2(140, 0)
 	var bgm_slider = HSlider.new()
 	bgm_slider.custom_minimum_size = Vector2(200, 30)
@@ -280,10 +280,10 @@ func _show_settings_panel() -> void:
 	var fast_box = HBoxContainer.new()
 	fast_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var fast_lbl = Label.new()
-	fast_lbl.text = SettingsManager.tc("Bot Speed:", "Tốc độ Đánh của Bot:")
+	fast_lbl.text = _tc("Bot Speed:", "Tốc độ Đánh của Bot:")
 	fast_lbl.custom_minimum_size = Vector2(140, 0)
 	var check_fast_bot = CheckButton.new()
-	check_fast_bot.text = SettingsManager.tc("Skip Delays", "Bỏ qua thời gian chờ")
+	check_fast_bot.text = _tc("Skip Delays", "Bỏ qua thời gian chờ")
 	check_fast_bot.focus_mode = Control.FOCUS_NONE
 	if sm: check_fast_bot.button_pressed = sm.fast_bot_mode
 	fast_box.add_child(fast_lbl)
@@ -294,7 +294,7 @@ func _show_settings_panel() -> void:
 	var bot_box = HBoxContainer.new()
 	bot_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var bot_lbl = Label.new()
-	bot_lbl.text = SettingsManager.tc("Num Bots:", "Số lượng Bot:")
+	bot_lbl.text = _tc("Num Bots:", "Số lượng Bot:")
 	bot_lbl.custom_minimum_size = Vector2(140, 0)
 	var bot_slider = HSlider.new()
 	bot_slider.custom_minimum_size = Vector2(200, 30)
@@ -303,8 +303,8 @@ func _show_settings_panel() -> void:
 	bot_slider.step = 1
 	bot_slider.focus_mode = Control.FOCUS_NONE
 	if sm:
-		bot_slider.value = sm.bot_count
-		bot_lbl.text = SettingsManager.tc("Num Bots: ", "Số lượng Bot: ") + str(sm.bot_count)
+		bot_slider.value = sm.num_bots
+		bot_lbl.text = _tc("Num Bots: ", "Số lượng Bot: ") + str(sm.num_bots)
 	bot_box.add_child(bot_lbl)
 	bot_box.add_child(bot_slider)
 	vbox.add_child(bot_box)
@@ -335,8 +335,8 @@ func _show_settings_panel() -> void:
 		)
 		
 		bot_slider.value_changed.connect(func(val):
-			sm.bot_count = int(val)
-			bot_lbl.text = SettingsManager.tc("Num Bots: ", "Số lượng Bot: ") + str(sm.bot_count)
+			sm.num_bots = int(val)
+			bot_lbl.text = _tc("Num Bots: ", "Số lượng Bot: ") + str(sm.num_bots)
 			sm.apply_and_save()
 		)
 		
@@ -344,7 +344,7 @@ func _show_settings_panel() -> void:
 	var lang_box = HBoxContainer.new()
 	lang_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var lang_lbl = Label.new()
-	lang_lbl.text = SettingsManager.tc("Language:", "Ngôn ngữ:")
+	lang_lbl.text = _tc("Language:", "Ngôn ngữ:")
 	lang_lbl.custom_minimum_size = Vector2(140, 0)
 	var lang_btn = OptionButton.new()
 	lang_btn.add_item("English")
@@ -377,7 +377,7 @@ func _show_settings_panel() -> void:
 	
 	# Nút đóng
 	var btn_close = Button.new()
-	btn_close.text = SettingsManager.tc("CLOSE", "ĐÓNG")
+	btn_close.text = _tc("CLOSE", "ĐÓNG")
 	btn_close.custom_minimum_size = Vector2(150, 40)
 	btn_close.focus_mode = Control.FOCUS_NONE
 	var style_close = StyleBoxFlat.new()
@@ -446,3 +446,9 @@ func _reset_card_and_animate(card_rect: TextureRect) -> void:
 	
 	# Loop back when done
 	tw.chain().tween_callback(self._reset_card_and_animate.bind(card_rect))
+
+func _tc(en: String, vi: String) -> String:
+	var sm = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	if sm and sm.has_method("tc"):
+		return sm.tc(en, vi)
+	return en

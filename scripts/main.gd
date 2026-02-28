@@ -756,16 +756,24 @@ func _on_game_over(human_won: bool) -> void:
 	if human_won and synth:
 		synth.play_win()
 
+	# Create a dedicated CanvasLayer to be ON TOP of everything
+	var layer = CanvasLayer.new()
+	layer.layer = 100 # High z-index
+	add_child(layer)
+
 	var popup_bg = ColorRect.new()
 	popup_bg.color = Color(0, 0, 0, 0.85)
 	popup_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(popup_bg)
+	layer.add_child(popup_bg)
+	
+	var center_container = CenterContainer.new()
+	center_container.set_anchors_preset(Control.PRESET_FULL_RECT)
+	popup_bg.add_child(center_container)
 	
 	var vbox = VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	vbox.add_theme_constant_override("separation", 30)
-	popup_bg.add_child(vbox)
+	center_container.add_child(vbox)
 	
 	var lbl = Label.new()
 	lbl.text = "YOU WIN!\nCHAMPION" if human_won else "BANKRUPT\nGAME OVER"
@@ -774,10 +782,7 @@ func _on_game_over(human_won: bool) -> void:
 	lbl.add_theme_color_override("font_color", THEME_GOLD if human_won else Color(1.0, 0.3, 0.3))
 	vbox.add_child(lbl)
 	
-	var btn = Button.new()
-	btn.text = "Main Menu"
-	btn.custom_minimum_size = Vector2(250, 60)
-	btn.add_theme_font_size_override("font_size", 24)
+	# Define base style for buttons
 	var style = StyleBoxFlat.new()
 	style.bg_color = THEME_BG_DARK
 	style.border_width_bottom = 4
@@ -786,6 +791,28 @@ func _on_game_over(human_won: bool) -> void:
 	style.corner_radius_top_right = 8
 	style.corner_radius_bottom_left = 8
 	style.corner_radius_bottom_right = 8
+	
+	if not human_won:
+		var btn_rebuy = Button.new()
+		btn_rebuy.text = "REBUY ($5000)"
+		btn_rebuy.custom_minimum_size = Vector2(250, 60)
+		btn_rebuy.add_theme_font_size_override("font_size", 24)
+		var style_rebuy = style.duplicate()
+		style_rebuy.border_color = Color(0.2, 0.8, 0.2)
+		btn_rebuy.add_theme_stylebox_override("normal", style_rebuy)
+		
+		btn_rebuy.pressed.connect(func():
+			var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+			if sm:
+				sm.update_chips(5000)
+			get_tree().reload_current_scene()
+		)
+		vbox.add_child(btn_rebuy)
+	
+	var btn = Button.new()
+	btn.text = "Main Menu"
+	btn.custom_minimum_size = Vector2(250, 60)
+	btn.add_theme_font_size_override("font_size", 24)
 	btn.add_theme_stylebox_override("normal", style)
 	btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/MainMenu.tscn"))
 	vbox.add_child(btn)

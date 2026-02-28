@@ -464,6 +464,9 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 		var p_human = _get_player_by_id("You")
 		sm.update_chips(p_human.chips)
 	
+	if active_players.is_empty():
+		return
+
 	current_player_index = (p_index + 1) % active_players.size()
 	
 	if current_player_index == last_aggressor_index:

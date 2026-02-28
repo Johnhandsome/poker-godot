@@ -163,6 +163,24 @@ func _setup_camera() -> void:
 	if game_manager:
 		game_manager.player_turn_started.connect(_on_player_turn_started)
 		game_manager.state_changed.connect(_on_game_state_changed)
+		game_manager.action_received.connect(_on_player_action)
+		game_manager.winners_declared.connect(_on_winners_declared)
+		
+func _on_player_action(player_id: String, action: int, amount: int) -> void:
+	match action:
+		GameManager.PlayerAction.FOLD: show_reaction(player_id, "FOLD")
+		GameManager.PlayerAction.RAISE: show_reaction(player_id, "RAISE")
+		GameManager.PlayerAction.ALL_IN: show_reaction(player_id, "ALLIN")
+		
+func _on_winners_declared(payouts: Dictionary, _best_cards: Dictionary) -> void:
+	for pid in payouts:
+		if payouts[pid] > 0:
+			show_reaction(pid, "WIN")
+		else:
+			# Chỉ những người không Fold và vẫn còn trong Showdown mới buồn
+			var p = game_manager._get_player_by_id(pid)
+			if p and not p.is_folded and game_manager.active_players.has(pid):
+				show_reaction(pid, "LOSE")
 
 func _process(delta: float) -> void:
 	if main_camera:
@@ -187,17 +205,30 @@ func _on_player_turn_started(player_id: String) -> void:
 		target_camera_pos = camera_base_pos + Vector3(dir_to_player.x * 0.3, 0, 0)
 		# Liếc nhẹ sang trái/phải
 		target_camera_rot = camera_base_rot + Vector3(0, dir_to_player.x * -8.0, 0)
+		
+		# Occasionally show thinking bubble for AI
+		if p.is_ai and randf() < 0.35:
+			get_tree().create_timer(randf_range(0.5, 1.2)).timeout.connect(func():
+				# Only show if still their turn
+				if game_manager.current_player_index == game_manager.active_players.find(player_id):
+					show_reaction(player_id, "THINK")
+			)
 
 func _on_game_state_changed(new_state: int, _old_state: int) -> void:
 	# Reset camera khi bắt đầu phân-phát bài hoặc đang chia bài mới
 	if new_state == GameManager.GameState.DEALING_FLOP \
 		or new_state == GameManager.GameState.DEALING_TURN \
 		or new_state == GameManager.GameState.DEALING_RIVER \
-		or new_state == GameManager.GameState.SHOWDOWN \
 		or new_state == GameManager.GameState.ROUND_END:
 		is_focusing = false
 		target_camera_pos = camera_base_pos
 		target_camera_rot = camera_base_rot
+		
+	elif new_state == GameManager.GameState.SHOWDOWN:
+		# ZOOM IN DRAMATICALLY
+		is_focusing = true
+		target_camera_pos = camera_base_pos + Vector3(0, -1.0, -1.5) # Lower and Closer
+		target_camera_rot = Vector3(-55, 0, 0) # Look straight down at the carnage
 
 var _chips_labels: Dictionary = {} # player_id -> Label3D
 var _player_nodes: Array = []
@@ -295,3 +326,42 @@ func _update_chips_labels() -> void:
 	for p in _player_nodes:
 		if _chips_labels.has(p.id):
 			_chips_labels[p.id].text = "$" + str(p.chips)
+
+# ---- REACTION SYSTEM ----
+func show_reaction(player_id: String, reaction_type: String) -> void:
+	var marker = null
+	# Tìm marker của player (đang là parent của chips_label)
+	if _chips_labels.has(player_id):
+		marker = _chips_labels[player_id].get_parent()
+		
+	if not marker: return
+	
+	var emoji = ""
+	match reaction_type:
+		"WIN": emoji = ["🤑", "😎", "🥳", "💰"].pick_random()
+		"LOSE": emoji = ["😭", "🤬", "💀", "🏳️"].pick_random()
+		"THINK": emoji = ["🤔", "🤨", "💭", "👀"].pick_random()
+		"RAISE": emoji = ["🚀", "🔥", "😤", "💪"].pick_random()
+		"ALLIN": emoji = ["🚨", "💣", "🍀", "🙏"].pick_random()
+		"FOLD": emoji = ["👋", "🙈", "🤐", "😴"].pick_random()
+		_: emoji = reaction_type
+		
+	var lbl = Label3D.new()
+	lbl.text = emoji
+	lbl.font_size = 96
+	lbl.pixel_size = 0.01
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lbl.no_depth_test = true # Luôn hiện trên cùng
+	lbl.render_priority = 10
+	lbl.modulate = Color(1, 1, 1, 0) # Start transparent
+	lbl.outline_render_priority = 9
+	lbl.position = Vector3(0, 1.5, 0) # Xuất hiện trên đầu
+	marker.add_child(lbl)
+	
+	# Animate
+	var tw = create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(lbl, "position:y", 2.5, 1.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "modulate:a", 1.0, 0.3)
+	tw.chain().tween_property(lbl, "modulate:a", 0.0, 0.5).set_delay(1.0)
+	tw.tween_callback(lbl.queue_free)
