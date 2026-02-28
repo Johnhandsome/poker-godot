@@ -1,5 +1,7 @@
 extends Control
 
+const PokerTheme = preload("res://scripts/ui/poker_theme.gd")
+
 # =================================================================
 # MAIN MENU — Polished production UI with PokerTheme
 # =================================================================
@@ -84,25 +86,39 @@ func _ready() -> void:
 	bankroll_lbl.add_theme_color_override("font_color", PokerTheme.ACCENT_GREEN if current_chips > 0 else PokerTheme.ACCENT_RED)
 	vbox.add_child(bankroll_lbl)
 
-	# PLAY button
-	var play_text = _tc("PLAY GAME", "CHƠI TIẾP") if current_chips > 0 else _tc("RESTART ($5000)", "CHƠI LẠI ($5000)")
-	var btn_play = PokerTheme.make_menu_button(play_text, PokerTheme.GOLD, Vector2(320, 70))
-	btn_play.add_theme_font_size_override("font_size", 30)
-	btn_play.pressed.connect(func():
+	# PRACTICE button — Solo vs Bots
+	var play_text = _tc("PRACTICE", "LUYỆN TẬP")
+	if current_chips <= 0:
+		play_text = _tc("RESTART ($5000)", "CHƠI LẠI ($5000)")
+	var btn_practice = PokerTheme.make_menu_button(play_text, PokerTheme.GOLD, Vector2(320, 70))
+	btn_practice.add_theme_font_size_override("font_size", 30)
+	btn_practice.tooltip_text = _tc("Play against AI bots to practice", "Chơi với bot AI để luyện tập")
+	btn_practice.pressed.connect(func():
 		_play_ui_sound()
-		var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
-		if sm and sm.get_chips() <= 0:
-			sm.reset_save()
+		var sm2 = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+		if sm2 and sm2.get_chips() <= 0:
+			sm2.reset_save()
+		var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+		if gm:
+			gm.game_mode = gm.GameMode.PRACTICE
 		_fade_to_scene("res://scenes/main.tscn")
 	)
-	PokerTheme.attach_hover_anim(btn_play, self)
-	vbox.add_child(btn_play)
+	PokerTheme.attach_hover_anim(btn_practice, self)
+	vbox.add_child(btn_practice)
 
-	# MULTIPLAYER button
-	var btn_multi = PokerTheme.make_menu_button(_tc("MULTIPLAYER", "CHƠI ONLINE"), PokerTheme.ACCENT_BLUE)
-	btn_multi.pressed.connect(func(): _play_ui_sound(); _show_multiplayer_panel())
-	PokerTheme.attach_hover_anim(btn_multi, self)
-	vbox.add_child(btn_multi)
+	# FRIENDS button — Private Multiplayer
+	var btn_friends = PokerTheme.make_menu_button(_tc("FRIENDS", "BẠN BÈ"), PokerTheme.ACCENT_BLUE)
+	btn_friends.tooltip_text = _tc("Private room with friends", "Phòng riêng với bạn bè")
+	btn_friends.pressed.connect(func(): _play_ui_sound(); _show_multiplayer_panel(false))
+	PokerTheme.attach_hover_anim(btn_friends, self)
+	vbox.add_child(btn_friends)
+
+	# ONLINE button — Public with bot fill
+	var btn_online = PokerTheme.make_menu_button(_tc("ONLINE", "ONLINE"), PokerTheme.ACCENT_GREEN)
+	btn_online.tooltip_text = _tc("Choose 6 or 9 player table, bots fill empty seats", "Chọn bàn 6 hoặc 9 người, bot lấp chỗ trống")
+	btn_online.pressed.connect(func(): _play_ui_sound(); _show_multiplayer_panel(true))
+	PokerTheme.attach_hover_anim(btn_online, self)
+	vbox.add_child(btn_online)
 
 	# SETTINGS button
 	var btn_settings = PokerTheme.make_menu_button(_tc("SETTINGS", "CÀI ĐẶT"), PokerTheme.TEXT_SECONDARY)
@@ -279,7 +295,7 @@ func _show_settings_panel() -> void:
 # ============================================================
 # MULTIPLAYER LOBBY — Production Quality
 # ============================================================
-func _show_multiplayer_panel() -> void:
+func _show_multiplayer_panel(is_online_mode: bool = false) -> void:
 	if has_node("MultiplayerPanel"): return
 
 	var overlay = CenterContainer.new()
@@ -306,11 +322,64 @@ func _show_multiplayer_panel() -> void:
 
 	# Title
 	var title = Label.new()
-	title.text = _tc("MULTIPLAYER LOBBY", "PHÒNG CHƠI ONLINE")
+	if is_online_mode:
+		title.text = _tc("ONLINE TABLE", "BÀN ONLINE")
+	else:
+		title.text = _tc("FRIENDS LOBBY", "PHÒNG BẠN BÈ")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", PokerTheme.ACCENT_BLUE)
+	title.add_theme_color_override("font_color", PokerTheme.ACCENT_BLUE if not is_online_mode else PokerTheme.ACCENT_GREEN)
 	vbox.add_child(title)
+
+	# Table size selector (ONLINE mode only)
+	var settings_mgr = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	var selected_table_size: int = settings_mgr.table_size if settings_mgr else 6
+	if is_online_mode:
+		var table_hbox = HBoxContainer.new()
+		table_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+		table_hbox.add_theme_constant_override("separation", 12)
+		var table_lbl = Label.new()
+		table_lbl.text = _tc("Table Size:", "Số ghế:")
+		table_lbl.add_theme_font_size_override("font_size", 16)
+		table_lbl.add_theme_color_override("font_color", PokerTheme.TEXT_SECONDARY)
+		table_hbox.add_child(table_lbl)
+
+		var btn_6 = PokerTheme.make_action_button("6 " + _tc("Players", "Người"), PokerTheme.ACCENT_GREEN if selected_table_size == 6 else PokerTheme.TEXT_MUTED, Vector2(120, 38))
+		btn_6.add_theme_font_size_override("font_size", 16)
+		table_hbox.add_child(btn_6)
+
+		var btn_9 = PokerTheme.make_action_button("9 " + _tc("Players", "Người"), PokerTheme.ACCENT_GREEN if selected_table_size == 9 else PokerTheme.TEXT_MUTED, Vector2(120, 38))
+		btn_9.add_theme_font_size_override("font_size", 16)
+		table_hbox.add_child(btn_9)
+
+		var _refresh_table_btns = func():
+			# Rebuild styles
+			var style_active = PokerTheme.make_panel_style(PokerTheme.ACCENT_GREEN.darkened(0.5), PokerTheme.ACCENT_GREEN, PokerTheme.CORNER_SM, 2, 8)
+			var style_inactive = PokerTheme.make_panel_style(PokerTheme.BG_MEDIUM, PokerTheme.BORDER_SUBTLE, PokerTheme.CORNER_SM, 1, 8)
+			btn_6.add_theme_stylebox_override("normal", style_active if selected_table_size == 6 else style_inactive)
+			btn_9.add_theme_stylebox_override("normal", style_active if selected_table_size == 9 else style_inactive)
+			btn_6.add_theme_color_override("font_color", PokerTheme.TEXT_PRIMARY if selected_table_size == 6 else PokerTheme.TEXT_MUTED)
+			btn_9.add_theme_color_override("font_color", PokerTheme.TEXT_PRIMARY if selected_table_size == 9 else PokerTheme.TEXT_MUTED)
+
+		btn_6.pressed.connect(func():
+			selected_table_size = 6
+			if settings_mgr: settings_mgr.table_size = 6; settings_mgr.save_settings()
+			_refresh_table_btns.call()
+		)
+		btn_9.pressed.connect(func():
+			selected_table_size = 9
+			if settings_mgr: settings_mgr.table_size = 9; settings_mgr.save_settings()
+			_refresh_table_btns.call()
+		)
+		_refresh_table_btns.call()
+		vbox.add_child(table_hbox)
+
+		var mode_hint = Label.new()
+		mode_hint.text = _tc("Empty seats will be filled with bots", "Ghế trống sẽ được lấp bằng bot")
+		mode_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		mode_hint.add_theme_font_size_override("font_size", 13)
+		mode_hint.add_theme_color_override("font_color", PokerTheme.TEXT_MUTED)
+		vbox.add_child(mode_hint)
 
 	# Name input
 	var name_hbox = HBoxContainer.new()
@@ -522,6 +591,13 @@ func _show_multiplayer_panel() -> void:
 
 	btn_start.pressed.connect(func():
 		_play_ui_sound()
+		var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+		if gm:
+			if is_online_mode:
+				gm.game_mode = gm.GameMode.ONLINE
+				gm.table_size = selected_table_size
+			else:
+				gm.game_mode = gm.GameMode.FRIENDS
 		nm.start_game()
 	)
 

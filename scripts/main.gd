@@ -2,6 +2,8 @@ extends Node3D
 
 class_name MainScene
 
+const PokerTheme = preload("res://scripts/ui/poker_theme.gd")
+
 # =================================================================
 # MAIN GAME SCENE — Polished production UI with PokerTheme
 # =================================================================

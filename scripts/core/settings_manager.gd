@@ -10,6 +10,8 @@ var bgm_volume: float = 0.5
 var fast_bot_mode: bool = false
 var num_bots: int = 4
 var language: String = "en" # "en" or "vi"
+var table_size: int = 6  # 6 or 9 for online mode
+var last_game_mode: String = "practice"  # practice, friends, online
 
 func _ready() -> void:
 	load_settings()
@@ -21,7 +23,9 @@ func save_settings() -> void:
 		"bgm_volume": bgm_volume,
 		"fast_bot_mode": fast_bot_mode,
 		"num_bots": num_bots,
-		"language": language
+		"language": language,
+		"table_size": table_size,
+		"last_game_mode": last_game_mode
 	}
 	
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -48,6 +52,8 @@ func load_settings() -> void:
 				if data.has("fast_bot_mode"): fast_bot_mode = data["fast_bot_mode"]
 				if data.has("num_bots"): num_bots = int(data["num_bots"])
 				if data.has("language"): language = data["language"]
+				if data.has("table_size"): table_size = int(data["table_size"])
+				if data.has("last_game_mode"): last_game_mode = data["last_game_mode"]
 		file.close()
 
 func apply_and_save() -> void:

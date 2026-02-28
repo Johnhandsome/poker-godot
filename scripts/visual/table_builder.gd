@@ -237,11 +237,70 @@ var _chips_labels: Dictionary = {} # player_id -> Label3D
 var _player_nodes: Array = []
 
 func _setup_players() -> void:
-	# Check multiplayer mode
+	# Check multiplayer mode and game mode
 	var nm = get_node("/root/NetworkManager")
 	var is_multiplayer = multiplayer.has_multiplayer_peer()
+	var gm_mode = game_manager.game_mode if game_manager else 0  # 0 = PRACTICE
 	
-	if is_multiplayer:
+	if is_multiplayer and gm_mode == GameManager.GameMode.ONLINE:
+		# --- ONLINE MODE: Human peers + AI bots to fill table ---
+		var target_size = game_manager.table_size if game_manager else 6
+		var peer_ids = nm.players.keys()
+		peer_ids.sort()
+		var human_count = peer_ids.size()
+		var bot_count = max(0, target_size - human_count)
+		num_players = human_count + bot_count
+		
+		var angle_step = PI * 2.0 / num_players
+		var my_id = multiplayer.get_unique_id()
+		var my_index = peer_ids.find(my_id)
+		
+		# Place human players first
+		for i in range(human_count):
+			var peer_id = peer_ids[i]
+			var p_id_str = str(peer_id)
+			var relative_i = (i - my_index + num_players) % num_players
+			var angle = (PI / 2.0) + (relative_i * angle_step)
+			var sit_radius = table_radius - 0.5
+			var pos = Vector3(cos(angle) * sit_radius, 0.1, sin(angle) * sit_radius)
+			seat_positions.append(pos)
+			
+			var chips = 5000
+			var player_node = HumanPlayer.new(p_id_str, chips)
+			player_node.name = p_id_str
+			player_node.set_multiplayer_authority(peer_id)
+			player_node.seat_position = pos
+			add_child(player_node)
+			_player_nodes.append(player_node)
+			if game_manager:
+				game_manager.register_player(player_node)
+			_create_seat_marker(pos, player_node)
+			
+			var p_name = nm.players[peer_id].get("name", "Player")
+			if _chips_labels.has(p_id_str):
+				var lbl_chip = _chips_labels[p_id_str]
+				var lbl_name = lbl_chip.get_parent().get_child(0) as Label3D
+				if lbl_name: lbl_name.text = p_name
+		
+		# Fill remaining seats with AI bots
+		for b in range(bot_count):
+			var seat_index = human_count + b
+			var relative_i = (seat_index - my_index + num_players) % num_players
+			var angle = (PI / 2.0) + (relative_i * angle_step)
+			var sit_radius = table_radius - 0.5
+			var pos = Vector3(cos(angle) * sit_radius, 0.1, sin(angle) * sit_radius)
+			seat_positions.append(pos)
+			
+			var bot_node = AIPlayer.new("Bot_" + str(b + 1), 5000)
+			bot_node.name = "Bot_" + str(b + 1)
+			bot_node.seat_position = pos
+			add_child(bot_node)
+			_player_nodes.append(bot_node)
+			if game_manager:
+				game_manager.register_player(bot_node)
+			_create_seat_marker(pos, bot_node)
+	
+	elif is_multiplayer:
 		# --- MULTIPLAYER SETUP ---
 		var peer_ids = nm.players.keys()
 		peer_ids.sort() # Ensure consistent order on all clients

@@ -115,7 +115,19 @@ func _register_player(info: Dictionary) -> void:
 # ============================================================
 func start_game() -> void:
 	if not multiplayer.is_server(): return
+	# Sync game mode and table size to all clients before scene change
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	var mode_int = gm.game_mode if gm else 0
+	var t_size = gm.table_size if gm else 6
+	_sync_game_mode.rpc(mode_int, t_size)
 	start_game_rpc.rpc()
+
+@rpc("authority", "call_local", "reliable")
+func _sync_game_mode(mode_int: int, t_size: int) -> void:
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if gm:
+		gm.game_mode = mode_int as GameManager.GameMode
+		gm.table_size = t_size
 
 @rpc("authority", "call_local", "reliable")
 func start_game_rpc() -> void:

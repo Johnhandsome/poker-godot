@@ -64,6 +64,15 @@ var current_blind_level: int = 1
 
 var multiplayer_mode: bool = false
 
+# --- GAME MODE SYSTEM ---
+enum GameMode {
+	PRACTICE,  # Solo vs bots
+	FRIENDS,   # Private multiplayer with friends
+	ONLINE     # Multiplayer + bot fill to reach table_size
+}
+var game_mode: GameMode = GameMode.PRACTICE
+var table_size: int = 6  # 6 or 9 for online mode
+
 func _ready():
 	deck = Deck.new()
 	pot_manager = PotManager.new()
