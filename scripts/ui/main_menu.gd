@@ -287,6 +287,24 @@ func _show_settings_panel() -> void:
 	fast_box.add_child(fast_check)
 	vbox.add_child(fast_box)
 	
+	# Bot Count
+	var bot_box = HBoxContainer.new()
+	bot_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var bot_lbl = Label.new()
+	bot_lbl.text = "Opponents: 4"
+	bot_lbl.custom_minimum_size = Vector2(120, 0)
+	var bot_slider = HSlider.new()
+	bot_slider.custom_minimum_size = Vector2(200, 30)
+	bot_slider.min_value = 1
+	bot_slider.max_value = 8
+	bot_slider.step = 1
+	if sm: 
+		bot_slider.value = sm.num_bots
+		bot_lbl.text = "Opponents: " + str(sm.num_bots)
+	bot_box.add_child(bot_lbl)
+	bot_box.add_child(bot_slider)
+	vbox.add_child(bot_box)
+	
 	# Tín hiệu cập nhật
 	if sm:
 		var update_audio = func():
@@ -311,6 +329,12 @@ func _show_settings_panel() -> void:
 		
 		fast_check.toggled.connect(func(pressed):
 			sm.fast_bot_mode = pressed
+			sm.apply_and_save()
+		)
+		
+		bot_slider.value_changed.connect(func(val):
+			sm.num_bots = int(val)
+			bot_lbl.text = "Opponents: " + str(sm.num_bots)
 			sm.apply_and_save()
 		)
 	

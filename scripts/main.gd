@@ -12,9 +12,14 @@ var btn_fold: Button
 var btn_call_check: Button
 var btn_raise: Button
 var btn_all_in: Button
+var btn_all_in: Button
 var raise_slider: HSlider
 var raise_value_label: Label
 var card_display: HBoxContainer  # 2D card display for human
+
+# --- LOG UI ---
+var log_vbox: VBoxContainer
+var log_scroll: ScrollContainer
 
 func _ready() -> void:
 	print("Poker Godot 3D - Bắt đầu khởi tạo...")
@@ -54,9 +59,11 @@ func _ready() -> void:
 		gm.state_changed.connect(_on_state_changed)
 		gm.action_received.connect(_on_action_received)
 		gm.player_turn_started.connect(_on_player_turn)
+		gm.player_turn_started.connect(_on_player_turn)
 		gm.community_cards_changed.connect(_on_community_changed)
-		gm.winners_declared.connect(func(_p, _b): _update_chips_label())
+		gm.winners_declared.connect(_on_winners_declared_ui)
 		gm.game_over.connect(_on_game_over)
+		gm.game_message.connect(func(msg): _add_log_message("[color=white]" + msg + "[/color]"))
 	
 	# 5. Kết nối signal card_drawn của human player (chờ 1 frame)
 	await get_tree().process_frame
@@ -259,6 +266,64 @@ func _setup_ui() -> void:
 	
 	btn_all_in = _create_action_button("ALL-IN", THEME_BTN_BORDER_ALLIN, "AllIn")
 	bottom_hbox.add_child(btn_all_in)
+	
+	# ---- LOG PANEL (Góc trái giữa màn hình) ----
+	var log_panel = PanelContainer.new()
+	log_panel.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	log_panel.position = Vector2(20, -100) # Lệch lên trên thanh bottom bar
+	log_panel.custom_minimum_size = Vector2(300, 250)
+	log_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE # Không chặn click
+	
+	var log_style = StyleBoxFlat.new()
+	log_style.bg_color = Color(0.04, 0.06, 0.05, 0.7) # Rất trong suốt
+	log_style.corner_radius_top_left = 8
+	log_style.corner_radius_top_right = 8
+	log_style.corner_radius_bottom_left = 8
+	log_style.corner_radius_bottom_right = 8
+	log_style.border_width_left = 1
+	log_style.border_color = THEME_BORDER
+	log_panel.add_theme_stylebox_override("panel", log_style)
+	canvas.add_child(log_panel)
+	
+	log_scroll = ScrollContainer.new()
+	log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	log_scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	log_panel.add_child(log_scroll)
+	
+	var margin_container = MarginContainer.new()
+	margin_container.add_theme_constant_override("margin_left", 10)
+	margin_container.add_theme_constant_override("margin_top", 10)
+	margin_container.add_theme_constant_override("margin_bottom", 10)
+	margin_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_scroll.add_child(margin_container)
+	
+	log_vbox = VBoxContainer.new()
+	log_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_vbox.alignment = BoxContainer.ALIGNMENT_BOTTOM
+	margin_container.add_child(log_vbox)
+	
+	# Kết nối signal nội bộ của ScrollBar để tự cuộn xuống cuối
+	log_scroll.get_v_scroll_bar().changed.connect(func():
+		log_scroll.scroll_vertical = int(log_scroll.get_v_scroll_bar().max_value)
+	)
+
+func _add_log_message(msg: String, is_important: bool = false) -> void:
+	if not log_vbox: return
+	
+	var rt = RichTextLabel.new()
+	rt.bbcode_enabled = true
+	rt.text = msg
+	rt.fit_content = true
+	if is_important:
+		rt.add_theme_font_size_override("normal_font_size", 16)
+	else:
+		rt.add_theme_font_size_override("normal_font_size", 14)
+	rt.add_theme_color_override("default_color", Color(0.9, 0.9, 0.9, 0.9))
+	
+	# Rắn giới hạn tối đa 30 dòng log để tránh lag memory rác
+	log_vbox.add_child(rt)
+	if log_vbox.get_child_count() > 30:
+		log_vbox.get_child(0).queue_free()
 
 func _add_action_button(parent: HBoxContainer, text: String, color: Color, action: String) -> void:
 	var btn = _create_action_button(text, color, action)
@@ -408,6 +473,14 @@ func _on_state_changed(new_state: int, _old_state: int) -> void:
 		GameManager.GameState.ROUND_END:
 			state_label.text = "Kết thúc ván"
 			
+	if new_state == GameManager.GameState.PREFLOP_BETTING \
+			or new_state == GameManager.GameState.FLOP_BETTING \
+			or new_state == GameManager.GameState.TURN_BETTING \
+			or new_state == GameManager.GameState.RIVER_BETTING:
+		_add_log_message("[color=#66ccff]--- Vòng Cược: " + state_label.text + " ---[/color]", true)
+	elif new_state == GameManager.GameState.SHOWDOWN:
+		_add_log_message("[color=#ffcc66]--- Lật Bài (Showdown) ---[/color]", true)
+		
 	# Update trạng thái disable của nút khi chuyển state mới mà không phải lượt đánh	
 	_set_action_buttons_disabled(true)
 	
@@ -418,11 +491,23 @@ func _on_state_changed(new_state: int, _old_state: int) -> void:
 	# Cập nhật chips human
 	_update_chips_label()
 
-func _on_action_received(_player_id: String, _action: int, _amount: int) -> void:
+func _on_action_received(player_id: String, action: int, amount: int) -> void:
 	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
 	if gm and pot_label:
 		pot_label.text = "POT: $" + str(gm.pot_manager.get_total_pot())
 	_update_chips_label()
+	
+	var action_str = ""
+	var p_color = "yellow" if player_id == "You" else "lightblue"
+	
+	match action:
+		GameManager.PlayerAction.FOLD: action_str = "[color=red]vừa úp bài (Fold)[/color]"
+		GameManager.PlayerAction.CHECK: action_str = "[color=gray]vừa Check[/color]"
+		GameManager.PlayerAction.CALL: action_str = "[color=lightgreen]vừa theo (Call)[/color]"
+		GameManager.PlayerAction.RAISE: action_str = "[color=orange]vừa Raise ($" + str(amount) + ")[/color]"
+		GameManager.PlayerAction.ALL_IN: action_str = "[color=magenta]vừa ALL-IN ($" + str(amount) + ")[/color]"
+		
+	_add_log_message("[color=" + p_color + "]" + player_id + "[/color] " + action_str)
 
 func _on_player_turn(player_id: String) -> void:
 	if not turn_label:
@@ -472,6 +557,15 @@ func _update_chips_label() -> void:
 			if !p.is_ai:
 				chips_label.text = "CHIPS: $" + str(p.chips)
 				break
+
+func _on_winners_declared_ui(payouts: Dictionary, best_cards: Dictionary) -> void:
+	_update_chips_label()
+	
+	for pid in payouts:
+		var amt = payouts[pid]
+		if amt > 0:
+			var p_color = "yellow" if pid == "You" else "lightblue"
+			_add_log_message("[color=" + p_color + "]" + pid + "[/color] thắng [color=gold]$" + str(amt) + "[/color]!")
 
 func _on_human_card_drawn(card: Card) -> void:
 	if not card_display:
@@ -685,6 +779,24 @@ func _show_settings_panel() -> void:
 	fast_box.add_child(fast_check)
 	vbox.add_child(fast_box)
 	
+	# Bot Count
+	var bot_box = HBoxContainer.new()
+	bot_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var bot_lbl = Label.new()
+	bot_lbl.text = "Opponents: 4"
+	bot_lbl.custom_minimum_size = Vector2(120, 0)
+	var bot_slider = HSlider.new()
+	bot_slider.custom_minimum_size = Vector2(200, 30)
+	bot_slider.min_value = 1
+	bot_slider.max_value = 8
+	bot_slider.step = 1
+	if sm: 
+		bot_slider.value = sm.num_bots
+		bot_lbl.text = "Opponents: " + str(sm.num_bots)
+	bot_box.add_child(bot_lbl)
+	bot_box.add_child(bot_slider)
+	vbox.add_child(bot_box)
+	
 	if sm:
 		var update_audio = func():
 			sm.master_volume = master_slider.value
@@ -709,6 +821,13 @@ func _show_settings_panel() -> void:
 		
 		fast_check.toggled.connect(func(pressed):
 			sm.fast_bot_mode = pressed
+			sm.apply_and_save()
+		)
+		
+		# Important note: Changing opponents in-game won't take effect until next launch/reset
+		bot_slider.value_changed.connect(func(val):
+			sm.num_bots = int(val)
+			bot_lbl.text = "Opponents: " + str(sm.num_bots)
 			sm.apply_and_save()
 		)
 	

@@ -8,6 +8,7 @@ var master_volume: float = 1.0
 var sfx_volume: float = 1.0
 var bgm_volume: float = 0.5
 var fast_bot_mode: bool = false
+var num_bots: int = 4
 
 func _ready() -> void:
 	load_settings()
@@ -17,7 +18,8 @@ func save_settings() -> void:
 		"master_volume": master_volume,
 		"sfx_volume": sfx_volume,
 		"bgm_volume": bgm_volume,
-		"fast_bot_mode": fast_bot_mode
+		"fast_bot_mode": fast_bot_mode,
+		"num_bots": num_bots
 	}
 	
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -42,6 +44,7 @@ func load_settings() -> void:
 				if data.has("sfx_volume"): sfx_volume = data["sfx_volume"]
 				if data.has("bgm_volume"): bgm_volume = data["bgm_volume"]
 				if data.has("fast_bot_mode"): fast_bot_mode = data["fast_bot_mode"]
+				if data.has("num_bots"): num_bots = int(data["num_bots"])
 		file.close()
 
 func apply_and_save() -> void:

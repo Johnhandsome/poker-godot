@@ -60,8 +60,6 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 			willingness += 0.1 # Dễ call nhưng ít raise
 		Personality.TIGHT_PASSIVE:
 			willingness -= 0.1 # Kén chọn bài
-		Personality.TIGHT_AGGRESSIVE:
-			willingness -= 0.05 # Rất kén bài, nhưng bài xịn là raise mạnh
 			
 	willingness = clamp(willingness, 0.0, 1.0)
 	
@@ -69,6 +67,26 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 	var total_pot = game_manager.pot_manager.get_total_pot()
 	# pot_odds là "Tỷ lệ tiền phải bỏ ra so với tổng tiền sẽ lấy được nếu thắng"
 	var pot_odds = float(amount_to_call) / max(1.0, float(total_pot + amount_to_call))
+	
+	# ----- AI MEMORY MODULE -----
+	# Nếu người đang Raise/Bet tạo ra áp lực (last_aggressor) là Human,
+	# Bot sẽ dùng trí nhớ của mình để đánh giá thái độ.
+	if amount_to_call > 0 and game_manager.active_players.size() > game_manager.last_aggressor_index:
+		var aggressor_id = game_manager.active_players[game_manager.last_aggressor_index]
+		if aggressor_id == "You":
+			# Nếu đối phương là Human, check bluff factor (0.5 là trung bình)
+			# Factor càng cao (tức người chơi hay Tố láo), Bot càng dễ chịu Call
+			var bluff_factor = game_manager.human_bluff_factor
+			
+			if bluff_factor > 0.8:
+				# Biết người chơi hay Bluff -> tăng phần trăm chấp nhận call/raise
+				willingness += (bluff_factor - 0.5) * 0.2
+			elif bluff_factor < 0.3:
+				# Người chơi đánh quá cẩn thận (chỉ show hand bài khủng)
+				# Bot sẽ phải nể sợ và giảm willingness
+				willingness -= 0.15
+				
+	willingness = clamp(willingness, 0.0, 1.0)
 	
 	var chosen_action = GameManager.PlayerAction.FOLD
 	var chosen_amount = 0

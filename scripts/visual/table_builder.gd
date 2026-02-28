@@ -7,12 +7,19 @@ class_name TableBuilder
 
 # Tinh chỉnh thông số bàn
 var table_radius: float = 5.0
-var num_players: int = 9
+var num_players: int = 5 # Default is 5 (You + 4 bots)
 
 # Danh sách các điểm ngồi
 var seat_positions: Array[Vector3] = []
 
 func _ready() -> void:
+	# Đọc tùy chỉnh số lượng Bot từ Settings
+	var sm = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	if sm:
+		# num_players = human(1) + num_bots
+		num_players = 1 + sm.num_bots
+	num_players = clamp(num_players, 2, 9)
+
 	_setup_environment()
 	_setup_table()
 	_setup_lighting()

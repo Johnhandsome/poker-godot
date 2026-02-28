@@ -45,6 +45,9 @@ var dealer_index: int = 0
 var current_player_index: int = 0
 var last_aggressor_index: int = 0
 
+# Track memory for AI
+var human_bluff_factor: float = 0.5 # Range 0.0 to 2.0. Base 0.5. Higher means Human bluffs more often.
+
 var deck: Deck
 var pot_manager: PotManager
 var community_cards: Array[Card] = []
@@ -244,6 +247,15 @@ func _end_betting_round():
 		
 	if active_players.size() == 1:
 		# Everyone else folded
+		if active_players[0] == "You":
+			# Human forced everyone else to fold. Might be a bluff.
+			human_bluff_factor += 0.1
+			human_bluff_factor = min(human_bluff_factor, 2.0)
+		else:
+			# Bot won by forcing Human to fold, slightly reduces bluff expectation
+			human_bluff_factor -= 0.05
+			human_bluff_factor = max(human_bluff_factor, 0.0)
+			
 		_change_state(GameState.SHOWDOWN)
 		_handle_showdown()
 		return
@@ -302,6 +314,17 @@ func _handle_showdown():
 			p.hand_result = result
 			
 		emit_signal("hand_evaluated", player_results)
+		
+		# Update Human bluff factor based on showdown
+		if player_results.has("You"):
+			var human_res = player_results["You"]
+			# If human went to showdown with a weak hand (High Card or weak Pair), they are bluffing/loose
+			if human_res.rank <= HandEvaluator.HandRank.PAIR:
+				human_bluff_factor += 0.2
+			# If human went to showdown with a strong hand (Three of a Kind+), they are playing solid
+			elif human_res.rank >= HandEvaluator.HandRank.THREE_OF_A_KIND:
+				human_bluff_factor -= 0.15
+			human_bluff_factor = clamp(human_bluff_factor, 0.0, 2.0)
 		
 	_change_state(GameState.DISTRIBUTING_POTS)
 	
