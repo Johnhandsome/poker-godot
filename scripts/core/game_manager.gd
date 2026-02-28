@@ -70,8 +70,13 @@ func register_player(player_node):
 	players.append(player_node)
 	
 func start_game():
+	# Xoá các player rác từ lần chơi trước nếu chúng đã bị giải phóng (freed)
+	for i in range(players.size() - 1, -1, -1):
+		if not is_instance_valid(players[i]):
+			players.remove_at(i)
+			
 	if players.size() < 2:
-		emit_signal("game_message", "Need at least 2 players to start.")
+		emit_signal("game_message", SettingsManager.tc("Need at least 2 players to start.", "Cần ít nhất 2 người chơi để bắt đầu."))
 		return
 		
 	# Khởi tạo dealer ngẫu nhiên lần đầu tiên
@@ -94,7 +99,8 @@ func _start_new_round():
 		current_blind_level = new_level
 		small_blind = 10 * int(pow(2, current_blind_level - 1))
 		big_blind = 20 * int(pow(2, current_blind_level - 1))
-		emit_signal("game_message", "[color=red][b]BLINDS LÊN CẤP " + str(current_blind_level) + ": $" + str(small_blind) + "/$" + str(big_blind) + "[/b][/color]")
+		var msg = SettingsManager.tc("[color=red][b]BLINDS LEVEL UP ", "[color=red][b]BLINDS LÊN CẤP ")
+		emit_signal("game_message", msg + str(current_blind_level) + ": $" + str(small_blind) + "/$" + str(big_blind) + "[/b][/color]")
 	emit_signal("blinds_level_changed", current_blind_level, small_blind, big_blind)
 	
 	# Phục hồi min_raise mặc định của level mới
@@ -144,7 +150,7 @@ func _start_new_round():
 		return
 			
 	if active_players.size() < 2:
-		emit_signal("game_message", "Game Over - Not enough players with chips.")
+		emit_signal("game_message", SettingsManager.tc("Game Over - Not enough players with chips.", "Trò chơi kết thúc - Không đủ người chơi còn tiền."))
 		return
 		
 	# Vì danh sách active_players đã xoay bắt đầu từ SB, dealer luôn là người cuối cùng trong active_players
@@ -356,7 +362,9 @@ func _handle_showdown():
 	for p_id in payouts:
 		var p = _get_player_by_id(p_id)
 		p.chips += payouts[p_id]
-		emit_signal("game_message", p.id + " thắng $" + str(payouts[p_id]) + "!")
+		var id_str = SettingsManager.tc("You", "Bạn") if p.id == "You" else p.id
+		var won_str = SettingsManager.tc(" won $", " thắng $")
+		emit_signal("game_message", id_str + won_str + str(payouts[p_id]) + "!")
 		
 	# Lưu tiến trình bankroll vào ổ cứng
 	_save_human_progress()

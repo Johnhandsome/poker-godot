@@ -3,11 +3,6 @@ extends Control
 func _ready() -> void:
 	# Bắt buộc root Node bung toàn màn hình và bám sát độ phân giải thực tế của hệ điều hành
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	size = get_viewport_rect().size
-	get_tree().get_root().size_changed.connect(func():
-		if is_inside_tree():
-			size = get_viewport_rect().size
-	)
 	
 	# Bật âm thanh Casino Ambience
 	var ambient_player = AudioStreamPlayer.new()
@@ -82,11 +77,12 @@ func _ready() -> void:
 	# Nút Play
 	var btn_play = Button.new()
 	if current_chips > 0:
-		btn_play.text = "PLAY GAME"
+		btn_play.text = SettingsManager.tc("PLAY GAME", "CHƠI TIẾP")
 	else:
-		btn_play.text = "RESTART ($5000)"
+		btn_play.text = SettingsManager.tc("RESTART ($5000)", "CHƠI LẠI ($5000)")
 	btn_play.custom_minimum_size = Vector2(300, 70)
 	btn_play.add_theme_font_size_override("font_size", 32)
+	btn_play.focus_mode = Control.FOCUS_NONE
 	var style_play = StyleBoxFlat.new()
 	style_play.bg_color = Color(0.12, 0.16, 0.13, 0.98)
 	style_play.border_width_bottom = 4
@@ -127,9 +123,10 @@ func _ready() -> void:
 	
 	# Nút Settings
 	var btn_settings = Button.new()
-	btn_settings.text = "SETTINGS"
+	btn_settings.text = SettingsManager.tc("SETTINGS", "CÀI ĐẶT")
 	btn_settings.custom_minimum_size = Vector2(300, 60)
 	btn_settings.add_theme_font_size_override("font_size", 24)
+	btn_settings.focus_mode = Control.FOCUS_NONE
 	
 	# Clone style từ btn_play
 	var style_settings = style_play.duplicate()
@@ -161,9 +158,10 @@ func _ready() -> void:
 	
 	# Nút Quit
 	var btn_quit = Button.new()
-	btn_quit.text = "QUIT"
+	btn_quit.text = SettingsManager.tc("QUIT", "THOÁT")
 	btn_quit.custom_minimum_size = Vector2(300, 60)
 	btn_quit.add_theme_font_size_override("font_size", 24)
+	btn_quit.focus_mode = Control.FOCUS_NONE
 	var style_quit = StyleBoxFlat.new()
 	style_quit.bg_color = Color(0.1, 0.1, 0.1, 0.8)
 	style_quit.corner_radius_top_left = 12
@@ -225,7 +223,7 @@ func _show_settings_panel() -> void:
 	panel.add_child(vbox)
 	
 	var title = Label.new()
-	title.text = "SETTINGS"
+	title.text = SettingsManager.tc("SETTINGS", "CÀI ĐẶT")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 32)
 	vbox.add_child(title)
@@ -236,12 +234,13 @@ func _show_settings_panel() -> void:
 	var master_box = HBoxContainer.new()
 	master_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var master_lbl = Label.new()
-	master_lbl.text = "Master Vol:"
-	master_lbl.custom_minimum_size = Vector2(120, 0)
+	master_lbl.text = SettingsManager.tc("Master Vol:", "Âm lượng tổng:")
+	master_lbl.custom_minimum_size = Vector2(140, 0)
 	var master_slider = HSlider.new()
 	master_slider.custom_minimum_size = Vector2(200, 30)
 	master_slider.max_value = 1.0
 	master_slider.step = 0.05
+	master_slider.focus_mode = Control.FOCUS_NONE
 	if sm: master_slider.value = sm.master_volume
 	master_box.add_child(master_lbl)
 	master_box.add_child(master_slider)
@@ -251,8 +250,8 @@ func _show_settings_panel() -> void:
 	var sfx_box = HBoxContainer.new()
 	sfx_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var sfx_lbl = Label.new()
-	sfx_lbl.text = "SFX Vol:"
-	sfx_lbl.custom_minimum_size = Vector2(120, 0)
+	sfx_lbl.text = SettingsManager.tc("SFX Vol:", "Âm thanh (FX):")
+	sfx_lbl.custom_minimum_size = Vector2(140, 0)
 	var sfx_slider = HSlider.new()
 	sfx_slider.custom_minimum_size = Vector2(200, 30)
 	sfx_slider.max_value = 1.0
@@ -266,8 +265,8 @@ func _show_settings_panel() -> void:
 	var bgm_box = HBoxContainer.new()
 	bgm_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var bgm_lbl = Label.new()
-	bgm_lbl.text = "Music Vol:"
-	bgm_lbl.custom_minimum_size = Vector2(120, 0)
+	bgm_lbl.text = SettingsManager.tc("Music Vol:", "Nhạc nền:")
+	bgm_lbl.custom_minimum_size = Vector2(140, 0)
 	var bgm_slider = HSlider.new()
 	bgm_slider.custom_minimum_size = Vector2(200, 30)
 	bgm_slider.max_value = 1.0
@@ -281,29 +280,31 @@ func _show_settings_panel() -> void:
 	var fast_box = HBoxContainer.new()
 	fast_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var fast_lbl = Label.new()
-	fast_lbl.text = "Fast Bot Mode:"
-	fast_lbl.custom_minimum_size = Vector2(120, 0)
-	var fast_check = CheckBox.new()
-	fast_check.text = "Skip Thinking Delays"
-	if sm: fast_check.button_pressed = sm.fast_bot_mode
+	fast_lbl.text = SettingsManager.tc("Bot Speed:", "Tốc độ Đánh của Bot:")
+	fast_lbl.custom_minimum_size = Vector2(140, 0)
+	var check_fast_bot = CheckButton.new()
+	check_fast_bot.text = SettingsManager.tc("Skip Delays", "Bỏ qua thời gian chờ")
+	check_fast_bot.focus_mode = Control.FOCUS_NONE
+	if sm: check_fast_bot.button_pressed = sm.fast_bot_mode
 	fast_box.add_child(fast_lbl)
-	fast_box.add_child(fast_check)
+	fast_box.add_child(check_fast_bot)
 	vbox.add_child(fast_box)
 	
 	# Bot Count
 	var bot_box = HBoxContainer.new()
 	bot_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var bot_lbl = Label.new()
-	bot_lbl.text = "Opponents: 4"
-	bot_lbl.custom_minimum_size = Vector2(120, 0)
+	bot_lbl.text = SettingsManager.tc("Num Bots:", "Số lượng Bot:")
+	bot_lbl.custom_minimum_size = Vector2(140, 0)
 	var bot_slider = HSlider.new()
 	bot_slider.custom_minimum_size = Vector2(200, 30)
 	bot_slider.min_value = 1
 	bot_slider.max_value = 8
 	bot_slider.step = 1
-	if sm: 
-		bot_slider.value = sm.num_bots
-		bot_lbl.text = "Opponents: " + str(sm.num_bots)
+	bot_slider.focus_mode = Control.FOCUS_NONE
+	if sm:
+		bot_slider.value = sm.bot_count
+		bot_lbl.text = SettingsManager.tc("Num Bots: ", "Số lượng Bot: ") + str(sm.bot_count)
 	bot_box.add_child(bot_lbl)
 	bot_box.add_child(bot_slider)
 	vbox.add_child(bot_box)
@@ -313,10 +314,9 @@ func _show_settings_panel() -> void:
 		var update_audio = func():
 			sm.master_volume = master_slider.value
 			sm.sfx_volume = sfx_slider.value
-			sm.bgm_volume = bgm_slider.value
 			sm.apply_and_save()
 			
-			var target_linear = sm.master_volume * sm.bgm_volume
+			var target_linear = sm.master_volume
 			# Sửa lỗi ambient player: dò tìm tất cả child thay vì dùng tên
 			for child in get_parent().get_children() if get_parent() else get_children():
 				if child is AudioStreamPlayer and child.stream and child.stream.resource_path.ends_with("33521.mp3"):
@@ -328,23 +328,58 @@ func _show_settings_panel() -> void:
 				
 		master_slider.value_changed.connect(func(_val): update_audio.call())
 		sfx_slider.value_changed.connect(func(_val): update_audio.call())
-		bgm_slider.value_changed.connect(func(_val): update_audio.call())
 		
-		fast_check.toggled.connect(func(pressed):
+		check_fast_bot.toggled.connect(func(pressed):
 			sm.fast_bot_mode = pressed
 			sm.apply_and_save()
 		)
 		
 		bot_slider.value_changed.connect(func(val):
-			sm.num_bots = int(val)
-			bot_lbl.text = "Opponents: " + str(sm.num_bots)
+			sm.bot_count = int(val)
+			bot_lbl.text = SettingsManager.tc("Num Bots: ", "Số lượng Bot: ") + str(sm.bot_count)
 			sm.apply_and_save()
 		)
+		
+	# Language Selection
+	var lang_box = HBoxContainer.new()
+	lang_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var lang_lbl = Label.new()
+	lang_lbl.text = SettingsManager.tc("Language:", "Ngôn ngữ:")
+	lang_lbl.custom_minimum_size = Vector2(140, 0)
+	var lang_btn = OptionButton.new()
+	lang_btn.add_item("English")
+	lang_btn.add_item("Tiếng Việt")
+	lang_btn.focus_mode = Control.FOCUS_NONE
+	if sm:
+		if sm.language == "vi":
+			lang_btn.selected = 1
+		else:
+			lang_btn.selected = 0
+		lang_btn.item_selected.connect(func(idx):
+			var selected_lang = "en"
+			if idx == 1:
+				selected_lang = "vi"
+			
+			var lang_changed = (sm.language != selected_lang)
+			if lang_changed:
+				sm.language = selected_lang
+				sm.save_settings()
+				get_tree().reload_current_scene()
+		)
+	lang_box.add_child(lang_lbl)
+	lang_box.add_child(lang_btn)
+	vbox.add_child(lang_box)
 	
-	# Nút Save & Close
+	# Đệm
+	var spacer2 = Control.new()
+	spacer2.custom_minimum_size = Vector2(0, 10)
+	vbox.add_child(spacer2)
+	
+	# Nút đóng
 	var btn_close = Button.new()
-	btn_close.text = "Save & Close"
-	btn_close.custom_minimum_size = Vector2(250, 50)
+	btn_close.text = SettingsManager.tc("CLOSE", "ĐÓNG")
+	btn_close.custom_minimum_size = Vector2(150, 40)
+	btn_close.focus_mode = Control.FOCUS_NONE
 	var style_close = StyleBoxFlat.new()
 	style_close.bg_color = Color(0.12, 0.3, 0.15, 0.9) # Xanh lá tối
 	style_close.corner_radius_top_left = 8

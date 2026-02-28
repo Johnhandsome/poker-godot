@@ -5,22 +5,22 @@ class_name MainScene
 # Script này là gốc (Root) của game.
 
 var pot_label: Label
-var chips_label: Label
 var state_label: Label
 var turn_label: Label
+var blinds_label: Label
 var btn_fold: Button
 var btn_call_check: Button
 var btn_raise: Button
 var btn_all_in: Button
 var raise_slider: HSlider
 var raise_value_label: Label
-var card_display: HBoxContainer  # 2D card display for human
-
-var blinds_label: Label
-
-# --- LOG UI ---
 var log_vbox: VBoxContainer
 var log_scroll: ScrollContainer
+var log_panel: PanelContainer
+var is_log_minimized: bool = false
+var btn_minimize_log: Button
+var card_display: HBoxContainer
+var chips_label: Label
 
 func _ready() -> void:
 	print("Poker Godot 3D - Bắt đầu khởi tạo...")
@@ -146,7 +146,7 @@ func _setup_ui() -> void:
 	
 	# Blinds level info
 	blinds_label = Label.new()
-	blinds_label.text = "BLINDS: 10/20 (Lvl 1)"
+	blinds_label.text = SettingsManager.tc("BLINDS: 10/20 (Lvl 1)", "BLINDS: 10/20 (Lvl 1)")
 	blinds_label.add_theme_font_size_override("font_size", 16)
 	blinds_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4)) # Reddish to show pressure
 	top_hbox.add_child(blinds_label)
@@ -158,8 +158,9 @@ func _setup_ui() -> void:
 	
 	# Menu/Pause button
 	var btn_pause = Button.new()
-	btn_pause.text = " MENU ⚙️ "
-	btn_pause.custom_minimum_size = Vector2(100, 36)
+	btn_pause.text = "MENU"
+	btn_pause.custom_minimum_size = Vector2(80, 40)
+	btn_pause.focus_mode = Control.FOCUS_NONE
 	btn_pause.add_theme_font_size_override("font_size", 16)
 	var pause_style = StyleBoxFlat.new()
 	pause_style.bg_color = THEME_BG_DARK
@@ -254,9 +255,9 @@ func _setup_ui() -> void:
 	btn_raise = _create_action_button("RAISE", THEME_BTN_BORDER_RAISE, "Raise")
 	bottom_hbox.add_child(btn_raise)
 	
-	# Raise slider + giá trị hiển thị
+	# Raise slider + giá trị hiển thị + Quick Bets
 	var raise_container = VBoxContainer.new()
-	raise_container.custom_minimum_size = Vector2(180, 50)
+	raise_container.custom_minimum_size = Vector2(250, 70)
 	raise_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	bottom_hbox.add_child(raise_container)
 	
@@ -267,8 +268,32 @@ func _setup_ui() -> void:
 	raise_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	raise_container.add_child(raise_value_label)
 	
+	# Hộp chứa các nút tắt (shortcuts)
+	var shortcuts_hbox = HBoxContainer.new()
+	shortcuts_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	shortcuts_hbox.add_theme_constant_override("separation", 2)
+	raise_container.add_child(shortcuts_hbox)
+	
+	var fractions = [
+		{"text": "1/4", "frac": 0.25},
+		{"text": "1/3", "frac": 0.3333},
+		{"text": "1/2", "frac": 0.5},
+		{"text": "2/3", "frac": 0.6666},
+		{"text": "3/4", "frac": 0.75},
+		{"text": "MAX", "frac": 1.0}
+	]
+	for f in fractions:
+		var btn = Button.new()
+		btn.text = f.text
+		btn.custom_minimum_size = Vector2(35, 20)
+		btn.add_theme_font_size_override("font_size", 10)
+		btn.focus_mode = Control.FOCUS_NONE
+		var frac_val = f.frac
+		btn.pressed.connect(func(): _on_quick_raise_pressed(frac_val))
+		shortcuts_hbox.add_child(btn)
+	
 	raise_slider = HSlider.new()
-	raise_slider.custom_minimum_size = Vector2(180, 20)
+	raise_slider.custom_minimum_size = Vector2(250, 20)
 	raise_slider.step = 10
 	raise_slider.min_value = 40
 	raise_slider.max_value = 1500
@@ -281,11 +306,16 @@ func _setup_ui() -> void:
 	bottom_hbox.add_child(btn_all_in)
 	
 	# ---- LOG PANEL (Góc trái giữa màn hình) ----
-	var log_panel = PanelContainer.new()
-	log_panel.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	log_panel.position = Vector2(20, -100) # Lệch lên trên thanh bottom bar
-	log_panel.custom_minimum_size = Vector2(300, 250)
+	log_panel = PanelContainer.new()
 	log_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE # Không chặn click
+	canvas.add_child(log_panel)
+	
+	# Định vị chặt chẽ vào góc dưới trái, ép nó mọc từ dưới mọc lên thay vì từ trên trút xuống
+	log_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT, true)
+	log_panel.offset_left = 20
+	log_panel.offset_bottom = -130 # Cách mép dưới (bottom bar) 130px
+	log_panel.offset_right = 320 # Rộng 300px
+	log_panel.offset_top = -330 # Cao 200px (130 + 200 = 330)
 	
 	var log_style = StyleBoxFlat.new()
 	log_style.bg_color = Color(0.04, 0.06, 0.05, 0.7) # Rất trong suốt
@@ -296,12 +326,34 @@ func _setup_ui() -> void:
 	log_style.border_width_left = 1
 	log_style.border_color = THEME_BORDER
 	log_panel.add_theme_stylebox_override("panel", log_style)
-	canvas.add_child(log_panel)
+	
+	var log_header_margin = MarginContainer.new()
+	log_header_margin.add_theme_constant_override("margin_right", 5)
+	log_header_margin.add_theme_constant_override("margin_left", 5)
+	log_header_margin.add_theme_constant_override("margin_top", 5)
+	
+	var log_header_box = HBoxContainer.new()
+	log_header_box.alignment = BoxContainer.ALIGNMENT_END
+	log_header_margin.add_child(log_header_box)
+	
+	btn_minimize_log = Button.new()
+	btn_minimize_log.text = "[-]"
+	btn_minimize_log.custom_minimum_size = Vector2(30, 20)
+	btn_minimize_log.mouse_filter = Control.MOUSE_FILTER_STOP
+	btn_minimize_log.pressed.connect(_toggle_log_size)
+	log_header_box.add_child(btn_minimize_log)
+	
+	var log_outer_vbox = VBoxContainer.new()
+	log_outer_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	log_outer_vbox.add_child(log_header_margin)
 	
 	log_scroll = ScrollContainer.new()
 	log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	log_scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	log_panel.add_child(log_scroll)
+	log_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	log_outer_vbox.add_child(log_scroll)
+	
+	log_panel.add_child(log_outer_vbox)
 	
 	var margin_container = MarginContainer.new()
 	margin_container.add_theme_constant_override("margin_left", 10)
@@ -337,6 +389,41 @@ func _add_log_message(msg: String, is_important: bool = false) -> void:
 	log_vbox.add_child(rt)
 	if log_vbox.get_child_count() > 30:
 		log_vbox.get_child(0).queue_free()
+		
+	if is_log_minimized:
+		# Lấy header box (bên trong margin container)
+		var log_header_box = btn_minimize_log.get_parent()
+		if log_header_box.get_child_count() > 1:
+			log_header_box.get_child(0).queue_free()
+		var new_preview = rt.duplicate()
+		new_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		log_header_box.add_child(new_preview)
+		log_header_box.move_child(new_preview, 0)
+
+func _toggle_log_size() -> void:
+	is_log_minimized = !is_log_minimized
+	if is_log_minimized:
+		btn_minimize_log.text = "[+]"
+		log_scroll.hide()
+		log_panel.offset_top = -170 # Cao 40px (130 + 40 = 170)
+		
+		# Move the last msg out to header to see it
+		if log_vbox.get_child_count() > 0:
+			var last_msg = log_vbox.get_child(log_vbox.get_child_count() - 1).duplicate()
+			last_msg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var log_header_box = btn_minimize_log.get_parent()
+			if log_header_box.get_child_count() > 1:
+				log_header_box.get_child(0).queue_free() # Remove old preview
+			log_header_box.add_child(last_msg)
+			log_header_box.move_child(last_msg, 0) # Day preview len truoc nut
+	else:
+		btn_minimize_log.text = "[-]"
+		log_scroll.show()
+		log_panel.offset_top = -330 # Cao 200px (130 + 200 = 330)
+		
+		var log_header_box = btn_minimize_log.get_parent()
+		if log_header_box.get_child_count() > 1:
+			log_header_box.get_child(0).queue_free() # Remove preview
 
 func _add_action_button(parent: HBoxContainer, text: String, color: Color, action: String) -> void:
 	var btn = _create_action_button(text, color, action)
@@ -451,6 +538,22 @@ func _on_raise_slider_changed(value: float) -> void:
 	if raise_value_label:
 		raise_value_label.text = "$" + str(int(value))
 
+func _on_quick_raise_pressed(frac_val: float) -> void:
+	if not raise_slider: return
+	_play_ui_sound()
+	var pm = get_node("/root/PotManager") if has_node("/root/PotManager") else null
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if pm and gm:
+		var current_pot = pm.get_total_pot()
+		var target_raise = int(current_pot * frac_val)
+		
+		# Round to nearest big blind
+		if gm.big_blind > 0:
+			target_raise = int(round(float(target_raise) / float(gm.big_blind)) * gm.big_blind)
+			
+		var final_val = clamp(target_raise, raise_slider.min_value, raise_slider.max_value)
+		raise_slider.value = final_val
+
 # ---- UI UPDATE CALLBACKS ----
 
 func _on_state_changed(new_state: int, _old_state: int) -> void:
@@ -490,9 +593,11 @@ func _on_state_changed(new_state: int, _old_state: int) -> void:
 			or new_state == GameManager.GameState.FLOP_BETTING \
 			or new_state == GameManager.GameState.TURN_BETTING \
 			or new_state == GameManager.GameState.RIVER_BETTING:
-		_add_log_message("[color=#66ccff]--- Vòng Cược: " + state_label.text + " ---[/color]", true)
+		var txt = SettingsManager.tc("--- Betting Round: ", "--- Vòng Cược: ")
+		_add_log_message("[color=#66ccff]" + txt + state_label.text + " ---[/color]", true)
 	elif new_state == GameManager.GameState.SHOWDOWN:
-		_add_log_message("[color=#ffcc66]--- Lật Bài (Showdown) ---[/color]", true)
+		var txt = SettingsManager.tc("--- Showdown ---", "--- Lật Bài (Showdown) ---")
+		_add_log_message("[color=#ffcc66]" + txt + "[/color]", true)
 		
 	# Update trạng thái disable của nút khi chuyển state mới mà không phải lượt đánh	
 	_set_action_buttons_disabled(true)
@@ -519,14 +624,14 @@ func _on_action_received(player_id: String, action: int, amount: int) -> void:
 	_update_chips_label()
 	
 	var action_str = ""
-	var p_color = "yellow" if player_id == "You" else "lightblue"
+	var p_color = "yellow" if player_id == SettingsManager.tc("You", "Bạn") or player_id == "You" else "lightblue"
 	
 	match action:
-		GameManager.PlayerAction.FOLD: action_str = "[color=red]vừa úp bài (Fold)[/color]"
-		GameManager.PlayerAction.CHECK: action_str = "[color=gray]vừa Check[/color]"
-		GameManager.PlayerAction.CALL: action_str = "[color=lightgreen]vừa theo (Call)[/color]"
-		GameManager.PlayerAction.RAISE: action_str = "[color=orange]vừa Raise ($" + str(amount) + ")[/color]"
-		GameManager.PlayerAction.ALL_IN: action_str = "[color=magenta]vừa ALL-IN ($" + str(amount) + ")[/color]"
+		GameManager.PlayerAction.FOLD: action_str = SettingsManager.tc("[color=red]folded[/color]", "[color=red]vừa úp bài (Fold)[/color]")
+		GameManager.PlayerAction.CHECK: action_str = SettingsManager.tc("[color=gray]checked[/color]", "[color=gray]vừa Check[/color]")
+		GameManager.PlayerAction.CALL: action_str = SettingsManager.tc("[color=lightgreen]called[/color]", "[color=lightgreen]vừa theo (Call)[/color]")
+		GameManager.PlayerAction.RAISE: action_str = SettingsManager.tc("[color=orange]raised ($" + str(amount) + ")[/color]", "[color=orange]vừa Raise ($" + str(amount) + ")[/color]")
+		GameManager.PlayerAction.ALL_IN: action_str = SettingsManager.tc("[color=magenta]went ALL-IN ($" + str(amount) + ")[/color]", "[color=magenta]vừa ALL-IN ($" + str(amount) + ")[/color]")
 		
 	_add_log_message("[color=" + p_color + "]" + player_id + "[/color] " + action_str)
 
@@ -538,10 +643,12 @@ func _on_player_turn(player_id: String) -> void:
 		var p = gm._get_player_by_id(player_id)
 		if p:
 			if p.is_ai:
-				turn_label.text = "Lượt: " + p.id + " (đang nghĩ...)"
+				var t1 = SettingsManager.tc("Turn: ", "Lượt: ")
+				var t2 = SettingsManager.tc(" (thinking...)", " (đang nghĩ...)")
+				turn_label.text = t1 + p.id + t2
 				turn_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
 			else:
-				turn_label.text = ">>> LƯỢT CỦA BẠN <<<"
+				turn_label.text = SettingsManager.tc(">>> YOUR TURN <<<", ">>> LƯỢT CỦA BẠN <<<")
 				turn_label.add_theme_color_override("font_color", Color(1.0, 1.0, 0.3))
 				
 				# Mở khóa các nút
@@ -579,7 +686,7 @@ func _update_chips_label() -> void:
 				chips_label.text = "CHIPS: $" + str(p.chips)
 				break
 
-func _on_winners_declared_ui(payouts: Dictionary, best_cards: Dictionary) -> void:
+func _on_winners_declared_ui(payouts: Dictionary, _best_cards: Dictionary) -> void:
 	_update_chips_label()
 	
 	for pid in payouts:

@@ -137,7 +137,7 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 	if game_manager:
 		game_manager.process_player_action(id, chosen_action, chosen_amount)
 
-func _emit_chatter(game_manager: Node, action: int, amount_to_call: int, raise_amount: int) -> void:
+func _emit_chatter(game_manager: Node, action: int, amount_to_call: int, _raise_amount: int) -> void:
 	# Only chat 15% of the time to avoid spam
 	if randf() > 0.15: return
 	
