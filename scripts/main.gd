@@ -69,10 +69,17 @@ func _ready() -> void:
 	# 5. Kết nối signal card_drawn của human player (chờ 1 frame)
 	await get_tree().process_frame
 	if gm:
-		for p in gm.players:
-			if !p.is_ai:
+		if gm.multiplayer_mode:
+			var my_id = str(multiplayer.get_unique_id())
+			var p = gm._get_player_by_id(my_id)
+			if p:
 				p.card_drawn.connect(_on_human_card_drawn)
-				break
+				p.card_updated.connect(_on_human_card_updated)
+		else:
+			for p in gm.players:
+				if !p.is_ai:
+					p.card_drawn.connect(_on_human_card_drawn)
+					break
 
 var dealer_btn: MeshInstance3D
 
@@ -503,10 +510,13 @@ func _on_ui_action_pressed(action_type: String) -> void:
 	if !game_manager: return
 	
 	var human = null
-	for p in game_manager.players:
-		if !p.is_ai:
-			human = p
-			break
+	if game_manager.multiplayer_mode:
+		human = game_manager._get_player_by_id(str(multiplayer.get_unique_id()))
+	else:
+		for p in game_manager.players:
+			if !p.is_ai:
+				human = p
+				break
 			
 	if !human: return
 	
@@ -544,7 +554,7 @@ func _on_quick_raise_pressed(frac_val: float) -> void:
 	var pm = get_node("/root/PotManager") if has_node("/root/PotManager") else null
 	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
 	if pm and gm:
-		var current_pot = pm.get_total_pot()
+		var current_pot = _get_current_pot()
 		var target_raise = int(current_pot * frac_val)
 		
 		# Round to nearest big blind
@@ -604,7 +614,7 @@ func _on_state_changed(new_state: int, _old_state: int) -> void:
 	
 	# Cập nhật pot
 	if gm and pot_label:
-		pot_label.text = "POT: $" + str(gm.pot_manager.get_total_pot())
+		pot_label.text = "POT: $" + str(_get_current_pot())
 	
 	# Cập nhật chips human
 	_update_chips_label()
@@ -620,7 +630,7 @@ func _on_blinds_level_changed(level: int, sb: int, bb: int) -> void:
 func _on_action_received(player_id: String, action: int, amount: int) -> void:
 	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
 	if gm and pot_label:
-		pot_label.text = "POT: $" + str(gm.pot_manager.get_total_pot())
+		pot_label.text = "POT: $" + str(_get_current_pot())
 	_update_chips_label()
 	
 	var action_str = ""
@@ -1061,3 +1071,20 @@ func _tc(en: String, vi: String) -> String:
 	if sm and sm.has_method("tc"):
 		return sm.tc(en, vi)
 	return en
+
+func _get_current_pot() -> int:
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if gm:
+		if gm.multiplayer_mode:
+			return gm.client_pot
+		elif gm.pot_manager:
+			return gm.pot_manager.get_total_pot()
+	return 0
+
+func _on_human_card_updated(card: Card) -> void:
+	if not card_display: return
+	var children = card_display.get_children()
+	if children.size() > 0:
+		var last_tex_rect = children.back() as TextureRect
+		if last_tex_rect:
+			last_tex_rect.texture = CardTextureGenerator.get_card_texture(card)

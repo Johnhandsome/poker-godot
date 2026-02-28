@@ -62,9 +62,14 @@ var min_raise: int = 20
 var hands_played: int = 0
 var current_blind_level: int = 1
 
+var multiplayer_mode: bool = false
+
 func _ready():
 	deck = Deck.new()
 	pot_manager = PotManager.new()
+	
+	if multiplayer.has_multiplayer_peer():
+		multiplayer_mode = true
 
 func register_player(player_node):
 	players.append(player_node)
@@ -75,6 +80,9 @@ func start_game():
 		if not is_instance_valid(players[i]):
 			players.remove_at(i)
 			
+	if multiplayer_mode and not multiplayer.is_server():
+		return # Clients wait for sync
+			
 	if players.size() < 2:
 		emit_signal("game_message", _tc("Need at least 2 players to start.", "Cần ít nhất 2 người chơi để bắt đầu."))
 		return
@@ -82,6 +90,57 @@ func start_game():
 	# Khởi tạo dealer ngẫu nhiên lần đầu tiên
 	dealer_player_id = players[randi() % players.size()].id
 	_start_new_round()
+
+# --- MULTIPLAYER RPCs ---
+
+@rpc("authority", "call_local", "reliable")
+func sync_state(new_state_int: int):
+	var new_state = new_state_int as GameState
+	var old_state = current_state
+	current_state = new_state
+	emit_signal("state_changed", new_state, old_state)
+
+@rpc("authority", "call_local", "reliable")
+func sync_community_cards(card_data_array: Array):
+	community_cards.clear()
+	for data in card_data_array:
+		community_cards.append(Card.new(data["suit"], data["rank"]))
+	emit_signal("community_cards_changed", community_cards)
+
+var client_pot: int = 0
+
+@rpc("authority", "call_local", "reliable")
+func sync_pot(total: int):
+	client_pot = total
+
+@rpc("authority", "call_local", "reliable")
+func sync_turn(p_id: String):
+	emit_signal("player_turn_started", p_id)
+
+@rpc("authority", "call_local", "reliable")
+func sync_action(p_id: String, action: int, amount: int):
+	emit_signal("action_received", p_id, action, amount)
+
+@rpc("authority", "call_local", "reliable")
+func sync_chips(p_id: String, chips: int, current_bet: int):
+	var p = _get_player_by_id(p_id)
+	if p:
+		p.chips = chips
+		p.current_bet = current_bet
+	emit_signal("action_received", p_id, -1, 0) # Trigger UI update
+
+@rpc("any_peer", "call_local", "reliable")
+func request_action_rpc(action: int, amount: int):
+	var sender_id = multiplayer.get_remote_sender_id()
+	# Validate turn
+	if active_players.size() <= current_player_index: return
+	
+	var current_p_id = active_players[current_player_index]
+	# Map sender_id to player ID
+	if str(sender_id) == current_p_id:
+		process_player_action(current_p_id, action, amount)
+
+# ------------------------
 
 func _start_new_round():
 	_change_state(GameState.WAITING_FOR_PLAYERS)
@@ -197,9 +256,49 @@ func _deal_hole_cards_async():
 	for _i in range(2):
 		for p_id in active_players:
 			var p = _get_player_by_id(p_id)
-			p.draw_card(deck.deal())
+			var card = deck.deal()
+			p.draw_card(card)
+			
+			if multiplayer_mode and multiplayer.is_server():
+				# Notify everyone (including self for consistency if needed, but self already drew)
+				# Actually, self drew. Remote clients need to know.
+				notify_card_dealt.rpc(p_id)
+				
+				# Send private data to the owner if it's a remote human
+				# In multiplayer mode, player ID IS the peer ID (string)
+				if not p.is_ai and p.id != "1":
+					var peer_id = int(p.id)
+					if peer_id > 0:
+						sync_hole_card.rpc_id(peer_id, card.suit, card.rank)
+			
 			await get_tree().create_timer(0.08).timeout # Delay vật lý nhanh hơn
 	await get_tree().create_timer(0.2).timeout # Đợi tất cả bài ổn định trên bàn
+
+@rpc("authority", "call_remote", "reliable")
+func notify_card_dealt(p_id: String):
+	# Remote clients receive this to visualize dealing
+	var p = _get_player_by_id(p_id)
+	if p:
+		# Draw a dummy card (Back facing)
+		# We use a placeholder that won't reveal info
+		var dummy = Card.new(Card.Suit.SPADES, Card.Rank.TWO)
+		p.draw_card(dummy)
+
+@rpc("authority", "call_local", "reliable")
+func sync_hole_card(suit: int, rank: int):
+	# Receive private hole card data
+	var my_id = str(multiplayer.get_unique_id())
+	# If this RPC is for me, update my last card
+	# But wait, the RPC is targeted to peer_id.
+	# So whoever receives this IS the owner.
+	
+	# Find my player object
+	var p = _get_player_by_id(my_id)
+	if p and p.hole_cards.size() > 0:
+		var last_card = p.hole_cards.back()
+		last_card.suit = suit
+		last_card.rank = rank
+		p.emit_signal("card_updated", last_card)
 
 func _start_betting_round():
 	# Find next active player who is not all-in
@@ -259,6 +358,10 @@ func _next_player_turn():
 			return
 			
 	emit_signal("player_turn_started", current_p_id)
+	
+	if multiplayer_mode and multiplayer.is_server():
+		sync_turn.rpc(current_p_id)
+		
 	# Tell the player to make a decision
 	current_p.request_action(current_bet, min_raise)
 
@@ -333,6 +436,13 @@ func _deal_community_cards_async(count: int):
 	for _i in range(count):
 		community_cards.append(deck.deal())
 		emit_signal("community_cards_changed", community_cards)
+		
+		if multiplayer_mode and multiplayer.is_server():
+			var card_data = []
+			for c in community_cards:
+				card_data.append({"suit": c.suit, "rank": c.rank})
+			sync_community_cards.rpc(card_data)
+			
 		await get_tree().create_timer(0.08).timeout # Faster dealing
 	await get_tree().create_timer(0.15).timeout
 
@@ -463,6 +573,15 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 				
 	emit_signal("action_received", player_id, action, amount)
 	
+	if multiplayer_mode and multiplayer.is_server():
+		sync_action.rpc(player_id, action, amount)
+		# Sync chips
+		var p_obj = _get_player_by_id(player_id)
+		if p_obj:
+			sync_chips.rpc(player_id, p_obj.chips, p_obj.current_bet)
+		# Sync pot
+		sync_pot.rpc(pot_manager.get_total_pot())
+	
 	# Xử lý lưu ngay lập tức ngay thời điểm Human ra quyết định (chống thoát game)
 	var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
 	if player_id == "You" and sm:
@@ -509,6 +628,9 @@ func _change_state(new_state: GameState):
 	var old_state = current_state
 	current_state = new_state
 	emit_signal("state_changed", new_state, old_state)
+	
+	if multiplayer_mode and multiplayer.is_server():
+		sync_state.rpc(new_state)
 
 func _get_player_by_id(id: String):
 	for p in players:

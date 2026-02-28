@@ -234,45 +234,95 @@ var _chips_labels: Dictionary = {} # player_id -> Label3D
 var _player_nodes: Array = []
 
 func _setup_players() -> void:
-	# Tính toán 9 vị trí ngồi cách đều nhau quanh bàn (theo hình tròn)
-	var angle_step = PI * 2.0 / num_players
+	# Check multiplayer mode
+	var nm = get_node("/root/NetworkManager")
+	var is_multiplayer = multiplayer.has_multiplayer_peer()
 	
-	for i in range(num_players):
-		# Human player sẽ ngồi ở góc 90 độ (PI/2) để quay mặt thẳng vào view camera
-		var angle = (PI / 2.0) + (i * angle_step)
+	if is_multiplayer:
+		# --- MULTIPLAYER SETUP ---
+		var peer_ids = nm.players.keys()
+		peer_ids.sort() # Ensure consistent order on all clients
+		num_players = peer_ids.size()
 		
-		# Bán kính ngồi lùi ra viền bàn một chút
-		var sit_radius = table_radius - 0.5 
+		var angle_step = PI * 2.0 / num_players
+		var my_id = multiplayer.get_unique_id()
+		var my_index = peer_ids.find(my_id)
 		
-		var pos = Vector3(
-			cos(angle) * sit_radius,
-			0.1, # Ngay trên mặt bàn một chút để ném bài
-			sin(angle) * sit_radius
-		)
-		seat_positions.append(pos)
-		
-		# Khởi tạo Player Node
-		var player_node: Player
-		if i == 0:
-			var human_chips = 5000
-			var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
-			if sm:
-				human_chips = sm.get_chips()
-			player_node = HumanPlayer.new("You", human_chips)
-			player_node.name = "HumanPlayer"
-		else:
-			player_node = AIPlayer.new("Bot_" + str(i), 1000)
-			player_node.name = "Bot_" + str(i)
+		for i in range(num_players):
+			var peer_id = peer_ids[i]
+			var p_id_str = str(peer_id)
 			
-		player_node.seat_position = pos
-		add_child(player_node)
-		_player_nodes.append(player_node)
-		
-		if game_manager:
-			game_manager.register_player(player_node)
+			# Rotate table so Local Player is always at the bottom (PI/2)
+			var relative_i = (i - my_index + num_players) % num_players
+			var angle = (PI / 2.0) + (relative_i * angle_step)
 			
-		# Tạo marker cho mỗi seat
-		_create_seat_marker(pos, player_node)
+			var sit_radius = table_radius - 0.5 
+			var pos = Vector3(cos(angle) * sit_radius, 0.1, sin(angle) * sit_radius)
+			seat_positions.append(pos)
+			
+			# All players are HumanPlayer in multiplayer (remote or local)
+			var chips = 5000 # Default for now
+			var player_node = HumanPlayer.new(p_id_str, chips)
+			player_node.name = p_id_str
+			player_node.set_multiplayer_authority(peer_id)
+			player_node.seat_position = pos
+			
+			add_child(player_node)
+			_player_nodes.append(player_node)
+			
+			if game_manager:
+				game_manager.register_player(player_node)
+			
+			_create_seat_marker(pos, player_node)
+			
+			# Set display name
+			var p_name = nm.players[peer_id].get("name", "Player")
+			# Update marker name tag
+			if _chips_labels.has(p_id_str):
+				var lbl_chip = _chips_labels[p_id_str]
+				var lbl_name = lbl_chip.get_parent().get_child(0) as Label3D
+				if lbl_name: lbl_name.text = p_name
+
+	else:
+		# --- SINGLEPLAYER SETUP ---
+		var angle_step = PI * 2.0 / num_players
+		
+		for i in range(num_players):
+			# Human player sẽ ngồi ở góc 90 độ (PI/2) để quay mặt thẳng vào view camera
+			var angle = (PI / 2.0) + (i * angle_step)
+			
+			# Bán kính ngồi lùi ra viền bàn một chút
+			var sit_radius = table_radius - 0.5 
+			
+			var pos = Vector3(
+				cos(angle) * sit_radius,
+				0.1, # Ngay trên mặt bàn một chút để ném bài
+				sin(angle) * sit_radius
+			)
+			seat_positions.append(pos)
+			
+			# Khởi tạo Player Node
+			var player_node: Player
+			if i == 0:
+				var human_chips = 5000
+				var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+				if sm:
+					human_chips = sm.get_chips()
+				player_node = HumanPlayer.new("You", human_chips)
+				player_node.name = "HumanPlayer"
+			else:
+				player_node = AIPlayer.new("Bot_" + str(i), 1000)
+				player_node.name = "Bot_" + str(i)
+				
+			player_node.seat_position = pos
+			add_child(player_node)
+			_player_nodes.append(player_node)
+			
+			if game_manager:
+				game_manager.register_player(player_node)
+				
+			# Tạo marker cho mỗi seat
+			_create_seat_marker(pos, player_node)
 
 func _create_seat_marker(pos: Vector3, player: Player) -> void:
 	var marker_mesh = MeshInstance3D.new()

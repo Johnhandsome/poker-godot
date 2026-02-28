@@ -121,6 +121,39 @@ func _ready() -> void:
 	
 	vbox.add_child(btn_play)
 	
+	# Nút Multiplayer
+	var btn_multi = Button.new()
+	btn_multi.text = _tc("MULTIPLAYER", "CHƠI ONLINE")
+	btn_multi.custom_minimum_size = Vector2(300, 60)
+	btn_multi.add_theme_font_size_override("font_size", 24)
+	btn_multi.focus_mode = Control.FOCUS_NONE
+	var style_multi = style_play.duplicate()
+	style_multi.border_color = Color(0.2, 0.6, 0.9)
+	var style_multi_hover = style_play_hover.duplicate()
+	style_multi_hover.border_color = Color(0.3, 0.7, 1.0)
+	
+	btn_multi.add_theme_stylebox_override("normal", style_multi)
+	btn_multi.add_theme_stylebox_override("hover", style_multi_hover)
+	btn_multi.add_theme_stylebox_override("pressed", style_multi)
+	
+	btn_multi.pressed.connect(func():
+		var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+		if synth: synth.play_ui_click()
+		_show_multiplayer_panel()
+	)
+	
+	btn_multi.mouse_entered.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_multi, "scale", Vector2(1.05, 1.05), 0.1)
+	)
+	btn_multi.mouse_exited.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_multi, "scale", Vector2(1.0, 1.0), 0.1)
+	)
+	btn_multi.pivot_offset = btn_multi.custom_minimum_size / 2.0
+	
+	vbox.add_child(btn_multi)
+	
 	# Nút Settings
 	var btn_settings = Button.new()
 	btn_settings.text = _tc("SETTINGS", "CÀI ĐẶT")
@@ -452,3 +485,145 @@ func _tc(en: String, vi: String) -> String:
 	if sm and sm.has_method("tc"):
 		return sm.tc(en, vi)
 	return en
+
+func _show_multiplayer_panel() -> void:
+	if has_node("MultiplayerPanel"): return
+	
+	var overlay = CenterContainer.new()
+	overlay.name = "MultiplayerPanel"
+	
+	var panel = PanelContainer.new()
+	panel.custom_minimum_size = Vector2(600, 500)
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.12, 0.18, 0.95)
+	style.corner_radius_top_left = 16
+	style.corner_radius_top_right = 16
+	style.corner_radius_bottom_left = 16
+	style.corner_radius_bottom_right = 16
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.2, 0.6, 0.9, 0.5)
+	panel.add_theme_stylebox_override("panel", style)
+	
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 15)
+	vbox.alignment = BoxContainer.ALIGNMENT_TOP
+	panel.add_child(vbox)
+	
+	var title = Label.new()
+	title.text = "MULTIPLAYER LOBBY"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
+	vbox.add_child(title)
+	
+	# Name Input
+	var name_box = HBoxContainer.new()
+	name_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var name_lbl = Label.new()
+	name_lbl.text = "Name:"
+	var name_edit = LineEdit.new()
+	name_edit.text = "Player" + str(randi() % 1000)
+	name_edit.custom_minimum_size = Vector2(200, 0)
+	name_box.add_child(name_lbl)
+	name_box.add_child(name_edit)
+	vbox.add_child(name_box)
+	
+	var hsep = HSeparator.new()
+	vbox.add_child(hsep)
+	
+	# HOST Section
+	var host_box = HBoxContainer.new()
+	host_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var btn_host = Button.new()
+	btn_host.text = "HOST GAME"
+	btn_host.custom_minimum_size = Vector2(150, 40)
+	host_box.add_child(btn_host)
+	vbox.add_child(host_box)
+	
+	# JOIN Section
+	var join_box = HBoxContainer.new()
+	join_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var ip_edit = LineEdit.new()
+	ip_edit.text = "127.0.0.1"
+	ip_edit.placeholder_text = "Server IP"
+	ip_edit.custom_minimum_size = Vector2(150, 0)
+	var btn_join = Button.new()
+	btn_join.text = "JOIN GAME"
+	btn_join.custom_minimum_size = Vector2(100, 40)
+	join_box.add_child(ip_edit)
+	join_box.add_child(btn_join)
+	vbox.add_child(join_box)
+	
+	var status_lbl = Label.new()
+	status_lbl.text = "Status: Idle"
+	status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(status_lbl)
+	
+	var player_list = ItemList.new()
+	player_list.custom_minimum_size = Vector2(0, 150)
+	vbox.add_child(player_list)
+	
+	var btn_start = Button.new()
+	btn_start.text = "START GAME"
+	btn_start.disabled = true
+	btn_start.visible = false
+	vbox.add_child(btn_start)
+	
+	var btn_close = Button.new()
+	btn_close.text = "BACK"
+	vbox.add_child(btn_close)
+	
+	# Logic
+	var nm = get_node("/root/NetworkManager")
+	
+	btn_host.pressed.connect(func():
+		status_lbl.text = "Hosting..."
+		nm.host_game(name_edit.text)
+		btn_host.disabled = true
+		btn_join.disabled = true
+		btn_start.visible = true
+		btn_start.disabled = false
+	)
+	
+	btn_join.pressed.connect(func():
+		status_lbl.text = "Connecting..."
+		nm.join_game(ip_edit.text, name_edit.text)
+		btn_host.disabled = true
+		btn_join.disabled = true
+	)
+	
+	btn_start.pressed.connect(func():
+		nm.start_game()
+	)
+	
+	btn_close.pressed.connect(func():
+		overlay.queue_free()
+		multiplayer.multiplayer_peer = null # Disconnect
+	)
+	
+	# Network signals
+	nm.player_connected.connect(func(id, info):
+		player_list.add_item(str(id) + ": " + info.get("name", "Unknown"))
+		status_lbl.text = "Player Connected: " + str(id)
+	)
+	
+	nm.connection_failed.connect(func():
+		status_lbl.text = "Connection Failed!"
+		btn_host.disabled = false
+		btn_join.disabled = false
+	)
+	
+	nm.server_disconnected.connect(func():
+		status_lbl.text = "Server Disconnected"
+		player_list.clear()
+		btn_host.disabled = false
+		btn_join.disabled = false
+		btn_start.visible = false
+	)
+	
+	overlay.add_child(panel)
+	add_child(overlay)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

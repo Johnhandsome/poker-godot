@@ -22,4 +22,7 @@ func receive_ui_input(action: int, amount: int = 0) -> void:
 	# Gửi vào game loop
 	var game_manager = get_node("/root/GameManager") if has_node("/root/GameManager") else null
 	if game_manager:
-		game_manager.process_player_action(id, action, amount)
+		if game_manager.multiplayer_mode:
+			game_manager.request_action_rpc.rpc_id(1, action, amount)
+		else:
+			game_manager.process_player_action(id, action, amount)

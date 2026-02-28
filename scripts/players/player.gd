@@ -15,6 +15,7 @@ var seat_position: Vector3 = Vector3.ZERO
 var is_ai: bool = false
 
 signal card_drawn(card: Card)
+signal card_updated(card: Card)
 
 func _init(p_id: String, initial_chips: int = 1000):
 	id = p_id
