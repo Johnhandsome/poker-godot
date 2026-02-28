@@ -143,7 +143,10 @@ func _setup_ui() -> void:
 	btn_pause.add_theme_font_size_override("font_size", 16)
 	var pause_style = StyleBoxFlat.new()
 	pause_style.bg_color = THEME_BG_DARK
-	pause_style.border_width_all = 1
+	pause_style.border_width_left = 1
+	pause_style.border_width_right = 1
+	pause_style.border_width_top = 1
+	pause_style.border_width_bottom = 1
 	pause_style.border_color = THEME_TEXT
 	pause_style.corner_radius_top_left = 6
 	pause_style.corner_radius_top_right = 6
@@ -156,8 +159,8 @@ func _setup_ui() -> void:
 	# ---- BOTTOM BAR: Cards + Chips + Action buttons (tất cả trong 1 thanh) ----
 	var bottom_panel = PanelContainer.new()
 	bottom_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bottom_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bottom_panel.custom_minimum_size = Vector2(0, 80)
-	bottom_panel.position.y = -80
 	
 	var bottom_style = StyleBoxFlat.new()
 	bottom_style.bg_color = THEME_BG_DARK
@@ -537,11 +540,14 @@ func _show_pause_menu() -> void:
 	overlay.color = Color(0, 0, 0, 0.7)
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	
+	var center = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+	
 	var vbox = VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	vbox.add_theme_constant_override("separation", 20)
-	overlay.add_child(vbox)
+	center.add_child(vbox)
 	
 	var title = Label.new()
 	title.text = "PAUSED"
@@ -571,7 +577,7 @@ func _show_pause_menu() -> void:
 	)
 	vbox.add_child(btn_quit)
 	
-	add_child(overlay)
+	get_node("GameUI").add_child(overlay)
 
 func _create_menu_button(text_str: String) -> Button:
 	var btn = Button.new()
@@ -593,9 +599,11 @@ func _create_menu_button(text_str: String) -> Button:
 func _show_settings_panel() -> void:
 	if has_node("SettingsPanel"): return
 	
+	var overlay = CenterContainer.new()
+	overlay.name = "SettingsPanel"
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	
 	var panel = PanelContainer.new()
-	panel.name = "SettingsPanel"
-	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.custom_minimum_size = Vector2(500, 400)
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.1, 0.1, 0.15, 0.95)
@@ -603,7 +611,10 @@ func _show_settings_panel() -> void:
 	style.corner_radius_top_right = 16
 	style.corner_radius_bottom_left = 16
 	style.corner_radius_bottom_right = 16
-	style.border_width_all = 2
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
 	style.border_color = Color(0.4, 0.6, 1.0, 0.5)
 	panel.add_theme_stylebox_override("panel", style)
 	
@@ -701,16 +712,34 @@ func _show_settings_panel() -> void:
 			sm.apply_and_save()
 		)
 	
+	# Nút Save & Close
 	var btn_close = Button.new()
-	btn_close.text = "CLOSE"
-	btn_close.custom_minimum_size = Vector2(200, 50)
+	btn_close.text = "Save & Close"
+	btn_close.custom_minimum_size = Vector2(250, 50)
+	var style_close = StyleBoxFlat.new()
+	style_close.bg_color = Color(0.12, 0.3, 0.15, 0.9) # Xanh lá tối
+	style_close.corner_radius_top_left = 8
+	style_close.corner_radius_top_right = 8
+	style_close.corner_radius_bottom_left = 8
+	style_close.corner_radius_bottom_right = 8
+	btn_close.add_theme_stylebox_override("normal", style_close)
+	btn_close.pressed.connect(func():
+		_play_ui_sound()
+		overlay.queue_free()
+	)
 	var btn_box = CenterContainer.new()
 	btn_box.add_child(btn_close)
 	vbox.add_child(btn_box)
 	
-	btn_close.pressed.connect(func():
-		_play_ui_sound()
-		panel.queue_free()
-	)
+	overlay.add_child(panel)
+	get_node("GameUI").add_child(overlay)
 	
-	add_child(panel)
+	# Call update once immediately to apply current slider states
+	if sm:
+		master_slider.value_changed.emit(master_slider.value)
+	
+	# Hiện ứng scale to
+	panel.scale = Vector2(0.5, 0.5)
+	panel.pivot_offset = Vector2(250, 200) # center pivot for PanelContainer
+	var tw = create_tween()
+	tw.tween_property(panel, "scale", Vector2(1.0, 1.0), 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

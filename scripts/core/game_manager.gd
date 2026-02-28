@@ -289,6 +289,9 @@ func _handle_showdown():
 	if active_players.size() > 1:
 		for p_id in active_players:
 			var p = _get_player_by_id(p_id)
+			if p.is_folded:
+				continue
+				
 			var result = HandEvaluator.evaluate(p.hole_cards, community_cards)
 			player_results[p_id] = result
 			p.hand_result = result

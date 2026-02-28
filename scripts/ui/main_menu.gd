@@ -1,6 +1,14 @@
 extends Control
 
 func _ready() -> void:
+	# Bắt buộc root Node bung toàn màn hình và bám sát độ phân giải thực tế của hệ điều hành
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	size = get_viewport_rect().size
+	get_tree().get_root().size_changed.connect(func():
+		if is_inside_tree():
+			size = get_viewport_rect().size
+	)
+	
 	# Bật âm thanh Casino Ambience
 	var ambient_player = AudioStreamPlayer.new()
 	ambient_player.stream = preload("res://assets/audio/freesound_community-poker-room-33521.mp3")
@@ -11,14 +19,14 @@ func _ready() -> void:
 
 	# Tạo nền Gradient tỏa sáng nhẹ ở giữa bằng ColorRect đơn giản để tránh lỗi texture viền trắng
 	var bg = ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	# Màu nền chủ đạo
-	bg.color = Color(0.04, 0.08, 0.05, 1.0) 
+	bg.color = Color(0.02, 0.02, 0.04, 1.0) # Màu xanh đậm như màn hình in-game
 	add_child(bg)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
 	# Gradient sáng ở giữa
 	var glow = ColorRect.new()
-	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(glow)
+	glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var mat = ShaderMaterial.new()
 	var shader_code = """
 	shader_type canvas_item;
@@ -26,24 +34,23 @@ func _ready() -> void:
 		vec2 uv = UV - vec2(0.5);
 		float dist = length(uv);
 		float alpha = smoothstep(0.6, 0.1, dist);
-		COLOR = vec4(0.12, 0.20, 0.15, alpha * 0.8);
+		COLOR = vec4(0.05, 0.10, 0.18, alpha * 0.8);
 	}
 	"""
 	var shader = Shader.new()
-	shader.code = shader_code
 	mat.shader = shader
 	glow.material = mat
-	add_child(glow)
 	
 	_spawn_floating_cards()
 	
+	var center = CenterContainer.new()
+	add_child(center)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	
 	var vbox = VBoxContainer.new()
-	# Đẩy anchor lên trên một chút để không bị lẹm nút Quit ở độ phân giải của User
-	vbox.set_anchors_preset(Control.PRESET_CENTER)
-	vbox.position = Vector2(0, -40) # Nhấc toàn bộ UI lên 40 pixels
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 25) # Giảm thêm khoảng cách một chút
-	add_child(vbox)
+	vbox.add_theme_constant_override("separation", 25)
+	center.add_child(vbox)
 	
 	var title = Label.new()
 	title.text = "TEXAS HOLD'EM\nGODOT POKER"
@@ -122,10 +129,12 @@ func _ready() -> void:
 	btn_settings.text = "SETTINGS"
 	btn_settings.custom_minimum_size = Vector2(300, 60)
 	btn_settings.add_theme_font_size_override("font_size", 24)
+	
+	# Clone style từ btn_play
 	var style_settings = style_play.duplicate()
-	style_settings.bg_color = Color(0.2, 0.4, 0.8, 0.9)
-	var style_settings_hover = style_settings.duplicate()
-	style_settings_hover.bg_color = Color(0.3, 0.5, 0.9, 0.9)
+	style_settings.border_width_bottom = 0 # Match với Quit
+	var style_settings_hover = style_play_hover.duplicate()
+	style_settings_hover.border_width_bottom = 0
 	
 	btn_settings.add_theme_stylebox_override("normal", style_settings)
 	btn_settings.add_theme_stylebox_override("hover", style_settings_hover)
@@ -188,9 +197,10 @@ func _ready() -> void:
 func _show_settings_panel() -> void:
 	if has_node("SettingsPanel"): return
 	
+	var overlay = CenterContainer.new()
+	overlay.name = "SettingsPanel"
+	
 	var panel = PanelContainer.new()
-	panel.name = "SettingsPanel"
-	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.custom_minimum_size = Vector2(500, 400)
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.1, 0.1, 0.15, 0.95)
@@ -285,10 +295,14 @@ func _show_settings_panel() -> void:
 			sm.apply_and_save()
 			
 			var target_linear = sm.master_volume * sm.bgm_volume
-			if target_linear <= 0.01:
-				ambient_player.volume_db = -80.0
-			else:
-				ambient_player.volume_db = linear_to_db(target_linear)
+			# Sửa lỗi ambient player: dò tìm tất cả child thay vì dùng tên
+			for child in get_parent().get_children() if get_parent() else get_children():
+				if child is AudioStreamPlayer and child.stream and child.stream.resource_path.ends_with("33521.mp3"):
+					if target_linear <= 0.01:
+						child.volume_db = -80.0
+					else:
+						child.volume_db = linear_to_db(target_linear)
+
 				
 		master_slider.value_changed.connect(func(_val): update_audio.call())
 		sfx_slider.value_changed.connect(func(_val): update_audio.call())
@@ -299,12 +313,12 @@ func _show_settings_panel() -> void:
 			sm.apply_and_save()
 		)
 	
-	# Nút Close
+	# Nút Save & Close
 	var btn_close = Button.new()
-	btn_close.text = "CLOSE"
-	btn_close.custom_minimum_size = Vector2(200, 50)
+	btn_close.text = "Save & Close"
+	btn_close.custom_minimum_size = Vector2(250, 50)
 	var style_close = StyleBoxFlat.new()
-	style_close.bg_color = Color(0.8, 0.2, 0.2, 0.9)
+	style_close.bg_color = Color(0.12, 0.3, 0.15, 0.9) # Xanh lá tối
 	style_close.corner_radius_top_left = 8
 	style_close.corner_radius_top_right = 8
 	style_close.corner_radius_bottom_left = 8
@@ -313,32 +327,36 @@ func _show_settings_panel() -> void:
 	btn_close.pressed.connect(func():
 		var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
 		if synth: synth.play_ui_click()
-		panel.queue_free()
+		overlay.queue_free()
 	)
 	var btn_box = CenterContainer.new()
 	btn_box.add_child(btn_close)
 	vbox.add_child(btn_box)
 	
-	ui_layer.add_child(panel)
+	overlay.add_child(panel)
+	add_child(overlay)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
-	# Hiện ứng rớt xuống
-	panel.position.y = -500
+	# Call update once immediately to apply current slider states
+	if sm:
+		master_slider.value_changed.emit(master_slider.value)
+	
+	# Hiện ứng scale to
+	panel.scale = Vector2(0.5, 0.5)
+	panel.pivot_offset = Vector2(250, 200) # Căn giữa pivot để scale mượt
 	var tw = create_tween()
-	tw.tween_property(panel, "position:y", (size.y - panel.custom_minimum_size.y) / 2.0, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(panel, "scale", Vector2(1.0, 1.0), 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 # ---- BACKGROUND ANIMATIONS ----
 func _spawn_floating_cards() -> void:
-	# Card generator
-	var gen = load("res://scripts/visual/card_texture_generator.gd").new()
-	
 	# Spawn 8 random floating cards
 	for i in range(8):
 		var card_rect = TextureRect.new()
 		var card = Card.new(randi_range(2, 14), randi() % 4)
-		card_rect.texture = gen.get_card_texture(card)
+		card_rect.texture = CardTextureGenerator.get_card_texture(card)
 		card_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		card_rect.custom_minimum_size = Vector2(150, 210)
-		card_rect.modulate = Color(1.0, 1.0, 1.0, 0.05) # Rất mờ chìm vào nền (5% opacity)
+		card_rect.modulate = Color(1.0, 1.0, 1.0, 0.15) # Mờ chìm vào nền (15% opacity)
 		
 		add_child(card_rect)
 		
