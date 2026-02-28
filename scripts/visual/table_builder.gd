@@ -135,6 +135,9 @@ var camera_base_rot: Vector3
 var target_camera_pos: Vector3
 var target_camera_rot: Vector3
 var is_focusing: bool = false
+var _camera_lerp_speed: float = 3.0  # Adjustable smoothness
+var _reaction_cooldowns: Dictionary = {}  # player_id -> last_reaction_time
+const REACTION_COOLDOWN_MS = 1500  # Throttle reactions per player
 
 func _setup_camera() -> void:
 	camera_rig = Node3D.new()
@@ -186,29 +189,28 @@ func _on_winners_declared(payouts: Dictionary, _best_cards: Dictionary) -> void:
 
 func _process(delta: float) -> void:
 	if main_camera:
-		# Làm mượt chuyển động Camera
-		main_camera.position = main_camera.position.lerp(target_camera_pos, delta * 3.0)
-		
-		# Quay mượt
+		# Smooth camera movement with adjustable speed
+		var lerp_t = clamp(delta * _camera_lerp_speed, 0.0, 1.0)
+		main_camera.position = main_camera.position.lerp(target_camera_pos, lerp_t)
+
+		# Smooth quaternion rotation
 		var current_quat = Quaternion.from_euler(main_camera.rotation)
 		var target_quat = Quaternion.from_euler(target_camera_rot * PI / 180.0)
-		main_camera.rotation = current_quat.slerp(target_quat, delta * 3.0).get_euler()
+		main_camera.rotation = current_quat.slerp(target_quat, lerp_t).get_euler()
 
 func _on_player_turn_started(player_id: String) -> void:
-	# Focus nhẹ (dịch tầm nhìn) về phía người chơi đang hành động
 	is_focusing = true
 	var p = game_manager._get_player_by_id(player_id)
 	if p:
-		# Từ góc nhìn ngồi: chỉ dịch nhẹ trái/phải và liếc mắt theo
 		var dir_to_player = p.seat_position.normalized()
-		target_camera_pos = camera_base_pos + Vector3(dir_to_player.x * 0.3, 0, 0)
-		# Liếc nhẹ sang trái/phải
-		target_camera_rot = camera_base_rot + Vector3(0, dir_to_player.x * -8.0, 0)
-		
-		# Occasionally show thinking bubble for AI
-		if p.is_ai and randf() < 0.35:
+		# Gentle camera drift toward active player
+		target_camera_pos = camera_base_pos + Vector3(dir_to_player.x * 0.25, 0, dir_to_player.z * 0.1)
+		target_camera_rot = camera_base_rot + Vector3(0, dir_to_player.x * -6.0, 0)
+		_camera_lerp_speed = 2.5  # Slower, cinematic
+
+		# Occasionally show thinking bubble for AI (throttled)
+		if p.is_ai and randf() < 0.3:
 			get_tree().create_timer(randf_range(0.5, 1.2)).timeout.connect(func():
-				# Only show if still their turn
 				if game_manager.current_player_index == game_manager.active_players.find(player_id):
 					show_reaction(player_id, "THINK")
 			)
@@ -220,14 +222,16 @@ func _on_game_state_changed(new_state: int, _old_state: int) -> void:
 		or new_state == GameManager.GameState.DEALING_RIVER \
 		or new_state == GameManager.GameState.ROUND_END:
 		is_focusing = false
+		_camera_lerp_speed = 3.0  # Normal speed for reset
 		target_camera_pos = camera_base_pos
 		target_camera_rot = camera_base_rot
 		
 	elif new_state == GameManager.GameState.SHOWDOWN:
-		# ZOOM IN DRAMATICALLY
+		# Dramatic zoom in with faster lerp
 		is_focusing = true
-		target_camera_pos = camera_base_pos + Vector3(0, -1.0, -1.5) # Lower and Closer
-		target_camera_rot = Vector3(-55, 0, 0) # Look straight down at the carnage
+		_camera_lerp_speed = 4.0  # Faster for dramatic effect
+		target_camera_pos = camera_base_pos + Vector3(0, -1.0, -1.5)
+		target_camera_rot = Vector3(-55, 0, 0)
 
 var _chips_labels: Dictionary = {} # player_id -> Label3D
 var _player_nodes: Array = []
@@ -377,14 +381,19 @@ func _update_chips_labels() -> void:
 		if _chips_labels.has(p.id):
 			_chips_labels[p.id].text = "$" + str(p.chips)
 
-# ---- REACTION SYSTEM ----
+# ---- REACTION SYSTEM (throttled) ----
 func show_reaction(player_id: String, reaction_type: String) -> void:
 	var marker = null
-	# Tìm marker của player (đang là parent của chips_label)
 	if _chips_labels.has(player_id):
 		marker = _chips_labels[player_id].get_parent()
-		
 	if not marker: return
+
+	# Throttle: skip if this player reacted too recently
+	var now = Time.get_ticks_msec()
+	if _reaction_cooldowns.has(player_id):
+		if now - _reaction_cooldowns[player_id] < REACTION_COOLDOWN_MS:
+			return
+	_reaction_cooldowns[player_id] = now
 	
 	var emoji = ""
 	match reaction_type:

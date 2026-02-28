@@ -268,105 +268,131 @@ func _on_player_drew_card(card: Card, player: Player) -> void:
 		p_card.throw_to(target_pos, randf_range(0.3, 0.45), randf_range(1.0, 3.0))
 
 func _on_community_cards_dealt(cards: Array) -> void:
-	# Chỉ spawn các lá bài mới (không spawn lại cái đã có)
 	var new_start = _spawned_community_cards.size()
 	if new_start >= cards.size():
 		return
-	
+
+	var fast = _is_fast_mode()
+	var stagger_delay = 0.0
+
 	for i in range(new_start, cards.size()):
 		var card = cards[i]
 		var p_card = card_scene.instantiate() as PhysicalCard
 		add_child(p_card)
-		
-		# Vị trí giữa bàn, xếp hàng ngang cách nhau vừa vặn (bàn lớn hơn)
-		var total_width = 0.85 * 4  # 5 cards max
+
+		var total_width = 0.85 * 4
 		var start_x = -total_width / 2.0
 		var card_x = start_x + i * 0.85
-		
-		# Đặt sát mặt bàn (y = 0.02 để vừa chìm vào nỉ)
+
 		p_card.global_position = Vector3(card_x, 0.02 + i * 0.002, 0)
-		p_card.rotation_degrees = Vector3(-90, 0, 0) # Xoay nằm phẳng xuống bàn
+		p_card.rotation_degrees = Vector3(-90, 0, 0)
 		p_card.set_card_data(card)
-		p_card.is_face_up = true
-		p_card._update_visuals()
 		p_card.freeze = true
-		
+
+		# Staggered flip reveal animation
+		if fast:
+			p_card.is_face_up = true
+			p_card._update_visuals()
+		else:
+			p_card.is_face_up = false
+			p_card._update_visuals()
+			p_card.modulate.a = 0.0
+			var p_id = p_card.get_instance_id()
+			var tw = create_tween()
+			if stagger_delay > 0:
+				tw.tween_interval(stagger_delay)
+			# Fade in face-down
+			tw.tween_property(p_card, "modulate:a", 1.0, 0.15)
+			# Brief pause then flip
+			tw.tween_interval(0.1)
+			# Simulate flip by scaling Y to 0, swapping texture, scaling back
+			tw.tween_property(p_card, "scale:z", 0.01, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tw.tween_callback(func():
+				var c = instance_from_id(p_id) as PhysicalCard
+				if is_instance_valid(c):
+					c.is_face_up = true
+					c._update_visuals()
+					var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+					if synth: synth.play_card_snap()
+			)
+			tw.tween_property(p_card, "scale:z", 1.0, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			stagger_delay += 0.25
+
 		_spawned_community_cards.append(p_card)
 
+func _is_fast_mode() -> bool:
+	var sm = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	return sm and sm.fast_bot_mode
+
 func _on_physical_action(action: int, amount: int, _force: float, player: Player) -> void:
-	# Đẩy chip mượt mà ra giữa bàn
 	if action == GameManager.PlayerAction.CALL or action == GameManager.PlayerAction.RAISE or action == GameManager.PlayerAction.ALL_IN:
-		# Tính số tiền thực cho CALL (bot gửi amount=0)
 		var actual_amount = amount
 		if action == GameManager.PlayerAction.CALL and actual_amount <= 0:
 			if game_manager:
 				actual_amount = game_manager.current_bet - player.current_bet
 		if actual_amount <= 0: return
-		
-		# Chia amount thành các chip mệnh giá khác nhau
+
+		# Batch chips — max 8 for performance, merge small denoms
 		var remaining = actual_amount
 		var chip_values = []
+		var max_chips = 8 if not _is_fast_mode() else 3
 		var denoms = [500, 100, 50, 25, 10]
-		
+
 		for denom in denoms:
-			while remaining >= denom and chip_values.size() < 15: # Max 15 chips
+			while remaining >= denom and chip_values.size() < max_chips:
 				chip_values.append(denom)
 				remaining -= denom
-				
 		if remaining > 0:
-			chip_values.append(remaining)
-		
+			if chip_values.size() > 0:
+				chip_values[-1] += remaining  # Merge remainder into last chip
+			else:
+				chip_values.append(remaining)
+
+		var fast = _is_fast_mode()
+		var speed_mult = 0.4 if fast else 1.0
 		var delay_accum = 0.0
 		for idx in range(chip_values.size()):
 			var val = chip_values[idx]
 			var chip = chip_scene.instantiate() as PhysicalChip
 			add_child(chip)
 			chip.set_value(val)
-			chip.freeze = true  # Bắt đầu đông cứng — tween điều khiển
-			
-			# Spawn gần player
+			chip.freeze = true
+
 			var spawn_pos = player.seat_position
 			spawn_pos.y = 0.15
 			var dir_to_center = -player.seat_position.normalized()
 			spawn_pos += dir_to_center * 0.3
 			chip.global_position = spawn_pos
-			
-			# Vị trí đích: vòng quanh khu vực giữa (tránh che bài)
+
 			var dist_from_center = randf_range(1.2, 2.0)
 			var target_pos = dir_to_center * -dist_from_center
 			target_pos.x += randf_range(-0.3, 0.3)
 			target_pos.z += randf_range(-0.3, 0.3)
-			
-			# Vị trí thả chip: ngay phía trên target để rơi xuống tự nhiên
+
 			var drop_pos = Vector3(target_pos.x, 0.4 + idx * 0.05, target_pos.z)
-			
-			# Tween arc → drop position, sau đó unfreeze cho vật lý xử lý landing
+
 			var tween = create_tween()
 			if delay_accum > 0:
 				tween.tween_interval(delay_accum)
-			
-			# Bay cung nhẹ lên
+
 			var mid = (spawn_pos + drop_pos) / 2.0
 			mid.y = 0.6 + idx * 0.03
-			tween.tween_property(chip, "global_position", mid, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-			# Bay tới vị trí thả
-			tween.tween_property(chip, "global_position", drop_pos, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tween.tween_property(chip, "global_position", mid, 0.15 * speed_mult).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tween.tween_property(chip, "global_position", drop_pos, 0.12 * speed_mult).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 			var chip_id = chip.get_instance_id()
-			tween.tween_callback(func(): 
+			tween.tween_callback(func():
 				var c = instance_from_id(chip_id) as PhysicalChip
 				if is_instance_valid(c):
 					c.freeze = false
 					c.is_settled = false
 					c.time_settled = 0.0
-					
 					var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
 					if synth: synth.play_chip_clink()
-						
 					c.apply_torque_impulse(Vector3(randf_range(-0.3, 0.3), randf_range(-0.2, 0.2), randf_range(-0.3, 0.3)))
 			)
-			
+
 			_spawned_chips.append(chip)
-			delay_accum += 0.06
+			delay_accum += 0.04 * speed_mult
 
 # ---- PLAYER HUDS ----
 func _setup_player_huds() -> void:
@@ -412,31 +438,33 @@ func _on_player_eliminated(player_id: String) -> void:
 # ---- POT ANIMATIONS ----
 func _gather_chips_to_pot() -> void:
 	if _spawned_chips.size() == 0: return
-	
+
+	var fast = _is_fast_mode()
+	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if synth: synth.play_card_slide()
+
+	# For single chip or fast mode, just snap to center instantly
+	if fast or _spawned_chips.size() <= 1:
+		for chip in _spawned_chips:
+			if is_instance_valid(chip):
+				chip.freeze = true
+				chip.collision_layer = 0; chip.collision_mask = 0
+				chip.global_position = dealer_pos + Vector3(randf_range(-0.15, 0.15), 0.05, randf_range(-0.15, 0.15))
+		return
+
 	var gather_tween = create_tween()
 	gather_tween.set_parallel(true)
 	var delay = 0.0
-	
-	# Phát âm thanh lùa tiền (lấy 1 tiếng chip rớt ngẫu nhiên đóng vai trò lùa)
-	# Phát âm thanh lùa tiền (dùng tiếng slide thay thế)
-	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
-	if synth: synth.play_card_slide()
-	
+
 	for chip in _spawned_chips:
 		if is_instance_valid(chip):
-			# Làm cho chip mất tính phản hồi vật lý để bay thẳng không bị kẹt
-			chip.freeze = true 
-			chip.collision_layer = 0
-			chip.collision_mask = 0
-			
-			# Gom về giữa bàn, hơi rải rác một chút cho tự nhiên
+			chip.freeze = true
+			chip.collision_layer = 0; chip.collision_mask = 0
 			var target_pos = dealer_pos + Vector3(randf_range(-0.2, 0.2), randf_range(0.0, 0.1), randf_range(-0.2, 0.2))
-			
-			gather_tween.tween_property(chip, "global_position", target_pos, 0.4 + delay)\
+			gather_tween.tween_property(chip, "global_position", target_pos, 0.35 + delay)\
 				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-			
-			delay += 0.02 # Các chip lùa vào lần lượt như chổi quyét
-			
+			delay += 0.015
+
 	gather_tween.chain()
 
 # ---- EVENT HANDLERS ----
@@ -773,8 +801,8 @@ func _spawn_confetti(pos: Vector3) -> void:
 	pmat.angle_max = 180.0
 	
 	particles.process_material = pmat
-	particles.amount = 100
-	particles.lifetime = 3.0
+	particles.amount = 50  # Reduced for performance
+	particles.lifetime = 2.5
 	particles.one_shot = true
 	particles.explosiveness = 0.95
 	

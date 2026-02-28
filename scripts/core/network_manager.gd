@@ -1,90 +1,168 @@
 extends Node
 
-# Signal for UI updates
-signal player_connected(peer_id, player_info)
-signal player_disconnected(peer_id)
+# =================================================================
+# NETWORK MANAGER — Production multiplayer (ENet)
+# =================================================================
+
+signal player_connected(peer_id: int, player_info: Dictionary)
+signal player_disconnected(peer_id: int)
 signal server_disconnected()
 signal connection_failed()
 signal game_started()
+signal chat_received(sender: String, message: String)
+signal ping_updated(ms: int)
 
-const PORT = 8910
+const PORT = 9050
 const DEFAULT_SERVER_IP = "127.0.0.1"
 const MAX_PLAYERS = 9
+const HEARTBEAT_INTERVAL = 3.0
+const RECONNECT_TIMEOUT = 10.0
 
-# Player info dictionary: { peer_id: { "name": "PlayerName", "id": 1 } }
-var players = {}
-var player_info = {"name": "Player"}
+var players: Dictionary = {}          # peer_id -> { "name": "...", ... }
+var player_info: Dictionary = {"name": "Player"}
+var _heartbeat_timer: Timer
+var _last_pong_time: float = 0.0
+var _ping_ms: int = 0
+var _is_reconnecting: bool = false
 
-func _ready():
+func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_player_connected)
 	multiplayer.peer_disconnected.connect(_on_player_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_ok)
 	multiplayer.connection_failed.connect(_on_connected_fail)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
-func host_game(player_name: String):
+	# Heartbeat timer — keeps connection alive, measures latency
+	_heartbeat_timer = Timer.new()
+	_heartbeat_timer.wait_time = HEARTBEAT_INTERVAL
+	_heartbeat_timer.timeout.connect(_send_heartbeat)
+	add_child(_heartbeat_timer)
+
+# ============================================================
+# HOST / JOIN
+# ============================================================
+func host_game(player_name: String) -> Error:
 	var peer = ENetMultiplayerPeer.new()
 	var error = peer.create_server(PORT, MAX_PLAYERS)
 	if error != OK:
-		print("Cannot host: " + str(error))
-		return
-		
+		push_warning("NetworkManager: Cannot host — " + error_string(error))
+		return error
 	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = peer
-	
 	player_info["name"] = player_name
-	players[1] = player_info
-	emit_signal("player_connected", 1, player_info)
-	print("Hosting on port " + str(PORT))
+	players[1] = player_info.duplicate()
+	player_connected.emit(1, player_info)
+	_heartbeat_timer.start()
+	print("Hosting on port ", PORT)
+	return OK
 
-func join_game(address: String, player_name: String):
-	if address.is_empty():
+func join_game(address: String, player_name: String) -> Error:
+	if address.strip_edges().is_empty():
 		address = DEFAULT_SERVER_IP
-		
 	var peer = ENetMultiplayerPeer.new()
 	var error = peer.create_client(address, PORT)
 	if error != OK:
-		print("Cannot join: " + str(error))
-		return
-		
+		push_warning("NetworkManager: Cannot join — " + error_string(error))
+		return error
 	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = peer
 	player_info["name"] = player_name
-	print("Joining " + address)
+	_heartbeat_timer.start()
+	print("Joining ", address, ":", PORT)
+	return OK
 
-func _on_player_connected(id):
-	# When a peer connects, send my info to them
+# ============================================================
+# PEER CALLBACKS
+# ============================================================
+func _on_player_connected(id: int) -> void:
 	_register_player.rpc_id(id, player_info)
 
-func _on_player_disconnected(id):
+func _on_player_disconnected(id: int) -> void:
+	var pname = players.get(id, {}).get("name", str(id))
 	players.erase(id)
-	emit_signal("player_disconnected", id)
+	player_disconnected.emit(id)
+	print("Player disconnected: ", pname, " (", id, ")")
 
-func _on_connected_ok():
+func _on_connected_ok() -> void:
 	var peer_id = multiplayer.get_unique_id()
-	players[peer_id] = player_info
-	emit_signal("player_connected", peer_id, player_info)
+	players[peer_id] = player_info.duplicate()
+	player_connected.emit(peer_id, player_info)
+	_is_reconnecting = false
 
-func _on_connected_fail():
+func _on_connected_fail() -> void:
 	multiplayer.multiplayer_peer = null
-	emit_signal("connection_failed")
+	_heartbeat_timer.stop()
+	connection_failed.emit()
 
-func _on_server_disconnected():
+func _on_server_disconnected() -> void:
 	multiplayer.multiplayer_peer = null
 	players.clear()
-	emit_signal("server_disconnected")
+	_heartbeat_timer.stop()
+	server_disconnected.emit()
 
+# ============================================================
+# PLAYER REGISTRATION
+# ============================================================
 @rpc("any_peer", "reliable")
-func _register_player(info):
-	var new_player_id = multiplayer.get_remote_sender_id()
-	players[new_player_id] = info
-	emit_signal("player_connected", new_player_id, info)
+func _register_player(info: Dictionary) -> void:
+	var new_id = multiplayer.get_remote_sender_id()
+	players[new_id] = info
+	player_connected.emit(new_id, info)
+	print("Registered: ", info.get("name", "?"), " id=", new_id)
+
+# ============================================================
+# START GAME
+# ============================================================
+func start_game() -> void:
+	if not multiplayer.is_server(): return
+	start_game_rpc.rpc()
 
 @rpc("authority", "call_local", "reliable")
-func start_game_rpc():
-	emit_signal("game_started")
-	# Load game scene
+func start_game_rpc() -> void:
+	game_started.emit()
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
-func start_game():
-	start_game_rpc.rpc()
+# ============================================================
+# CHAT
+# ============================================================
+func send_chat(sender_name: String, message: String) -> void:
+	if message.strip_edges().is_empty(): return
+	_broadcast_chat.rpc(sender_name, message)
+
+@rpc("any_peer", "reliable")
+func _broadcast_chat(sender_name: String, message: String) -> void:
+	chat_received.emit(sender_name, message)
+
+# ============================================================
+# HEARTBEAT / PING
+# ============================================================
+func _send_heartbeat() -> void:
+	if not multiplayer.has_multiplayer_peer(): return
+	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	_last_pong_time = Time.get_ticks_msec()
+	_ping_rpc.rpc()
+
+@rpc("any_peer", "unreliable")
+func _ping_rpc() -> void:
+	_pong_rpc.rpc_id(multiplayer.get_remote_sender_id())
+
+@rpc("any_peer", "unreliable")
+func _pong_rpc() -> void:
+	_ping_ms = Time.get_ticks_msec() - int(_last_pong_time)
+	ping_updated.emit(_ping_ms)
+
+func get_ping() -> int:
+	return _ping_ms
+
+# ============================================================
+# UTILITIES
+# ============================================================
+func get_player_name(peer_id: int) -> String:
+	return players.get(peer_id, {}).get("name", "Player " + str(peer_id))
+
+func get_player_count() -> int:
+	return players.size()
+
+func is_host() -> bool:
+	return multiplayer.has_multiplayer_peer() and multiplayer.is_server()
