@@ -38,7 +38,7 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 	all_cards.append_array(community_cards)
 	
 	# Sort cards by value descending
-	all_cards.sort_custom(Callable(HandEvaluator, "_sort_card_descending"))
+	all_cards.sort_custom(func(a: Card, b: Card) -> bool: return a.get_value() > b.get_value())
 	
 	var result = EvaluationResult.new()
 	
@@ -90,7 +90,7 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 		elif count == 2:
 			pairs.append(val)
 			
-	pairs.sort_custom(Callable(HandEvaluator, "_sort_descending"))
+	pairs.sort_custom(func(a: int, b: int) -> bool: return a > b)
 	
 	# Check Four of a Kind
 	if four_of_a_kind != -1:
@@ -189,7 +189,7 @@ static func _get_flush_cards(cards: Array[Card]) -> Array[Card]:
 			for c in suit_buckets[suit]:
 				result.append(c as Card)
 			# Sort by value DESC
-			result.sort_custom(Callable(HandEvaluator, "_sort_card_descending"))
+			result.sort_custom(func(a: Card, b: Card) -> bool: return a.get_value() > b.get_value())
 			return result
 	var empty: Array[Card] = []
 	return empty
@@ -213,7 +213,7 @@ static func _get_straight_cards(cards: Array[Card]) -> Array[Card]:
 		unique_values.append(1) # Ace can also be 1
 		value_to_card[1] = value_to_card[Card.Rank.ACE]
 		
-	unique_values.sort_custom(Callable(HandEvaluator, "_sort_descending"))
+	unique_values.sort_custom(func(a: int, b: int) -> bool: return a > b)
 	
 	var current_straight: Array[Card] = []
 	

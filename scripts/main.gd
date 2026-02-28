@@ -21,6 +21,7 @@ var is_log_minimized: bool = false
 var btn_minimize_log: Button
 var card_display: HBoxContainer
 var chips_label: Label
+var _game_message_callable: Callable
 
 func _ready() -> void:
 	print("Poker Godot 3D - Bắt đầu khởi tạo...")
@@ -63,7 +64,8 @@ func _ready() -> void:
 		gm.community_cards_changed.connect(_on_community_changed)
 		gm.winners_declared.connect(_on_winners_declared_ui)
 		gm.game_over.connect(_on_game_over)
-		gm.game_message.connect(func(msg): _add_log_message("[color=white]" + msg + "[/color]"))
+		_game_message_callable = func(msg): _add_log_message("[color=white]" + msg + "[/color]")
+		gm.game_message.connect(_game_message_callable)
 		gm.blinds_level_changed.connect(_on_blinds_level_changed)
 	
 	# 5. Kết nối signal card_drawn của human player (chờ 1 frame)
@@ -82,6 +84,26 @@ func _ready() -> void:
 					break
 
 var dealer_btn: MeshInstance3D
+
+func _exit_tree() -> void:
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if gm:
+		if gm.state_changed.is_connected(_on_state_changed):
+			gm.state_changed.disconnect(_on_state_changed)
+		if gm.action_received.is_connected(_on_action_received):
+			gm.action_received.disconnect(_on_action_received)
+		if gm.player_turn_started.is_connected(_on_player_turn):
+			gm.player_turn_started.disconnect(_on_player_turn)
+		if gm.community_cards_changed.is_connected(_on_community_changed):
+			gm.community_cards_changed.disconnect(_on_community_changed)
+		if gm.winners_declared.is_connected(_on_winners_declared_ui):
+			gm.winners_declared.disconnect(_on_winners_declared_ui)
+		if gm.game_over.is_connected(_on_game_over):
+			gm.game_over.disconnect(_on_game_over)
+		if _game_message_callable.is_valid() and gm.game_message.is_connected(_game_message_callable):
+			gm.game_message.disconnect(_game_message_callable)
+		if gm.blinds_level_changed.is_connected(_on_blinds_level_changed):
+			gm.blinds_level_changed.disconnect(_on_blinds_level_changed)
 
 # ---- THEME COLORS (Dark Emerald + Gold) ----
 const THEME_BG_DARK = Color(0.06, 0.09, 0.07, 0.88)       # Nền tối xanh rêu đậm
@@ -560,9 +582,8 @@ func _on_raise_slider_changed(value: float) -> void:
 func _on_quick_raise_pressed(frac_val: float) -> void:
 	if not raise_slider: return
 	_play_ui_sound()
-	var pm = get_node("/root/PotManager") if has_node("/root/PotManager") else null
 	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
-	if pm and gm:
+	if gm and gm.pot_manager:
 		var current_pot = _get_current_pot()
 		var target_raise = int(current_pot * frac_val)
 		

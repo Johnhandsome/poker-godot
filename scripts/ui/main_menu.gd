@@ -14,12 +14,14 @@ func _ready() -> void:
 
 	# Tạo nền Gradient tỏa sáng nhẹ ở giữa bằng ColorRect đơn giản để tránh lỗi texture viền trắng
 	var bg = ColorRect.new()
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bg.color = Color(0.02, 0.02, 0.04, 1.0) # Màu xanh đậm như màn hình in-game
 	add_child(bg)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
 	# Gradient sáng ở giữa
 	var glow = ColorRect.new()
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(glow)
 	glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var mat = ShaderMaterial.new()
@@ -40,10 +42,12 @@ func _ready() -> void:
 	_spawn_floating_cards()
 	
 	var center = CenterContainer.new()
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
 	var vbox = VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	vbox.add_theme_constant_override("separation", 25)
 	center.add_child(vbox)
@@ -82,7 +86,6 @@ func _ready() -> void:
 		btn_play.text = _tc("RESTART ($5000)", "CHƠI LẠI ($5000)")
 	btn_play.custom_minimum_size = Vector2(300, 70)
 	btn_play.add_theme_font_size_override("font_size", 32)
-	btn_play.focus_mode = Control.FOCUS_NONE
 	var style_play = StyleBoxFlat.new()
 	style_play.bg_color = Color(0.12, 0.16, 0.13, 0.98)
 	style_play.border_width_bottom = 4
@@ -126,7 +129,6 @@ func _ready() -> void:
 	btn_multi.text = _tc("MULTIPLAYER", "CHƠI ONLINE")
 	btn_multi.custom_minimum_size = Vector2(300, 60)
 	btn_multi.add_theme_font_size_override("font_size", 24)
-	btn_multi.focus_mode = Control.FOCUS_NONE
 	var style_multi = style_play.duplicate()
 	style_multi.border_color = Color(0.2, 0.6, 0.9)
 	var style_multi_hover = style_play_hover.duplicate()
@@ -159,7 +161,6 @@ func _ready() -> void:
 	btn_settings.text = _tc("SETTINGS", "CÀI ĐẶT")
 	btn_settings.custom_minimum_size = Vector2(300, 60)
 	btn_settings.add_theme_font_size_override("font_size", 24)
-	btn_settings.focus_mode = Control.FOCUS_NONE
 	
 	# Clone style từ btn_play
 	var style_settings = style_play.duplicate()
@@ -194,7 +195,6 @@ func _ready() -> void:
 	btn_quit.text = _tc("QUIT", "THOÁT")
 	btn_quit.custom_minimum_size = Vector2(300, 60)
 	btn_quit.add_theme_font_size_override("font_size", 24)
-	btn_quit.focus_mode = Control.FOCUS_NONE
 	var style_quit = StyleBoxFlat.new()
 	style_quit.bg_color = Color(0.1, 0.1, 0.1, 0.8)
 	style_quit.corner_radius_top_left = 12
@@ -347,9 +347,10 @@ func _show_settings_panel() -> void:
 		var update_audio = func():
 			sm.master_volume = master_slider.value
 			sm.sfx_volume = sfx_slider.value
+			sm.bgm_volume = bgm_slider.value
 			sm.apply_and_save()
 			
-			var target_linear = sm.master_volume
+			var target_linear = sm.master_volume * sm.bgm_volume
 			# Sửa lỗi ambient player: dò tìm tất cả child thay vì dùng tên
 			for child in get_parent().get_children() if get_parent() else get_children():
 				if child is AudioStreamPlayer and child.stream and child.stream.resource_path.ends_with("33521.mp3"):
@@ -361,6 +362,7 @@ func _show_settings_panel() -> void:
 				
 		master_slider.value_changed.connect(func(_val): update_audio.call())
 		sfx_slider.value_changed.connect(func(_val): update_audio.call())
+		bgm_slider.value_changed.connect(func(_val): update_audio.call())
 		
 		check_fast_bot.toggled.connect(func(pressed):
 			sm.fast_bot_mode = pressed
@@ -448,7 +450,8 @@ func _spawn_floating_cards() -> void:
 	# Spawn 8 random floating cards
 	for i in range(8):
 		var card_rect = TextureRect.new()
-		var card = Card.new(randi_range(2, 14), randi() % 4)
+		card_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var card = Card.new(randi() % 4 as Card.Suit, randi_range(2, 14) as Card.Rank)
 		card_rect.texture = CardTextureGenerator.get_card_texture(card)
 		card_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		card_rect.custom_minimum_size = Vector2(150, 210)
@@ -579,6 +582,23 @@ func _show_multiplayer_panel() -> void:
 	# Logic
 	var nm = get_node("/root/NetworkManager")
 	
+	# Store signal callables so we can disconnect them on close
+	var _on_player_connected = func(id, info):
+		player_list.add_item(str(id) + ": " + info.get("name", "Unknown"))
+		status_lbl.text = "Player Connected: " + str(id)
+	
+	var _on_connection_failed = func():
+		status_lbl.text = "Connection Failed!"
+		btn_host.disabled = false
+		btn_join.disabled = false
+	
+	var _on_server_disconnected = func():
+		status_lbl.text = "Server Disconnected"
+		player_list.clear()
+		btn_host.disabled = false
+		btn_join.disabled = false
+		btn_start.visible = false
+	
 	btn_host.pressed.connect(func():
 		status_lbl.text = "Hosting..."
 		nm.host_game(name_edit.text)
@@ -600,29 +620,21 @@ func _show_multiplayer_panel() -> void:
 	)
 	
 	btn_close.pressed.connect(func():
+		# Disconnect network signals to avoid leaks
+		if nm.player_connected.is_connected(_on_player_connected):
+			nm.player_connected.disconnect(_on_player_connected)
+		if nm.connection_failed.is_connected(_on_connection_failed):
+			nm.connection_failed.disconnect(_on_connection_failed)
+		if nm.server_disconnected.is_connected(_on_server_disconnected):
+			nm.server_disconnected.disconnect(_on_server_disconnected)
 		overlay.queue_free()
 		multiplayer.multiplayer_peer = null # Disconnect
 	)
 	
 	# Network signals
-	nm.player_connected.connect(func(id, info):
-		player_list.add_item(str(id) + ": " + info.get("name", "Unknown"))
-		status_lbl.text = "Player Connected: " + str(id)
-	)
-	
-	nm.connection_failed.connect(func():
-		status_lbl.text = "Connection Failed!"
-		btn_host.disabled = false
-		btn_join.disabled = false
-	)
-	
-	nm.server_disconnected.connect(func():
-		status_lbl.text = "Server Disconnected"
-		player_list.clear()
-		btn_host.disabled = false
-		btn_join.disabled = false
-		btn_start.visible = false
-	)
+	nm.player_connected.connect(_on_player_connected)
+	nm.connection_failed.connect(_on_connection_failed)
+	nm.server_disconnected.connect(_on_server_disconnected)
 	
 	overlay.add_child(panel)
 	add_child(overlay)

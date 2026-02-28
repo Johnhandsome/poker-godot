@@ -410,13 +410,15 @@ func _end_betting_round():
 	for p_id in active_players:
 		_get_player_by_id(p_id).current_bet = 0
 		
-	if active_players.size() == 1:
+	if unfolded_players.size() <= 1:
 		# Everyone else folded
-		if active_players[0] == "You":
+		var last_standing = unfolded_players[0] if unfolded_players.size() == 1 else ""
+		var human_id = _get_human_id()
+		if last_standing == human_id:
 			# Human forced everyone else to fold. Might be a bluff.
 			human_bluff_factor += 0.1
 			human_bluff_factor = min(human_bluff_factor, 2.0)
-		else:
+		elif last_standing != "":
 			# Bot won by forcing Human to fold, slightly reduces bluff expectation
 			human_bluff_factor -= 0.05
 			human_bluff_factor = max(human_bluff_factor, 0.0)
@@ -488,8 +490,9 @@ func _handle_showdown():
 		emit_signal("hand_evaluated", player_results)
 		
 		# Update Human bluff factor based on showdown
-		if player_results.has("You"):
-			var human_res = player_results["You"]
+		var human_id = _get_human_id()
+		if player_results.has(human_id):
+			var human_res = player_results[human_id]
 			# If human went to showdown with a weak hand (High Card or weak Pair), they are bluffing/loose
 			if human_res.rank <= HandEvaluator.HandRank.PAIR:
 				human_bluff_factor += 0.2
@@ -510,7 +513,7 @@ func _handle_showdown():
 	for p_id in payouts:
 		var p = _get_player_by_id(p_id)
 		p.chips += payouts[p_id]
-		var id_str = _tc("You", "Bạn") if p.id == "You" else p.id
+		var id_str = _tc("You", "Bạn") if p.id == _get_human_id() else p.id
 		var won_str = _tc(" won $", " thắng $")
 		emit_signal("game_message", id_str + won_str + str(payouts[p_id]) + "!")
 		
@@ -524,7 +527,7 @@ func _handle_showdown():
 
 # Lưu dữ liệu người chơi thật vào cuối ván
 func _save_human_progress() -> void:
-	var human = _get_player_by_id("You")
+	var human = _get_player_by_id(_get_human_id())
 	var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
 	if human and sm:
 		sm.update_chips(human.chips)
@@ -610,8 +613,8 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 	
 	# Xử lý lưu ngay lập tức ngay thời điểm Human ra quyết định (chống thoát game)
 	var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
-	if player_id == "You" and sm:
-		var p_human = _get_player_by_id("You")
+	if player_id == _get_human_id() and sm:
+		var p_human = _get_player_by_id(_get_human_id())
 		sm.update_chips(p_human.chips)
 	
 	if active_players.is_empty():
@@ -645,7 +648,7 @@ func _process_bet(player, amount: int):
 	
 	# Xử lý lưu ngay lập tức nếu là rớt tiền để chống người chơi thoát ra (cheat)
 	var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
-	if player.id == "You" and sm:
+	if player.id == _get_human_id() and sm:
 		sm.update_chips(player.chips)
 
 # --- Helpers ---
@@ -657,6 +660,11 @@ func _change_state(new_state: GameState):
 	
 	if multiplayer_mode and multiplayer.is_server():
 		sync_state.rpc(new_state)
+
+func _get_human_id() -> String:
+	if multiplayer_mode:
+		return str(multiplayer.get_unique_id())
+	return "You"
 
 func _get_player_by_id(id: String):
 	for p in players:

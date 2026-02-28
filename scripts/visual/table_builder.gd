@@ -167,12 +167,14 @@ func _setup_camera() -> void:
 		game_manager.winners_declared.connect(_on_winners_declared)
 		
 func _on_player_action(player_id: String, action: int, amount: int) -> void:
+	_update_chips_labels()
 	match action:
 		GameManager.PlayerAction.FOLD: show_reaction(player_id, "FOLD")
 		GameManager.PlayerAction.RAISE: show_reaction(player_id, "RAISE")
 		GameManager.PlayerAction.ALL_IN: show_reaction(player_id, "ALLIN")
 		
 func _on_winners_declared(payouts: Dictionary, _best_cards: Dictionary) -> void:
+	_update_chips_labels()
 	for pid in payouts:
 		if payouts[pid] > 0:
 			show_reaction(pid, "WIN")
@@ -191,9 +193,6 @@ func _process(delta: float) -> void:
 		var current_quat = Quaternion.from_euler(main_camera.rotation)
 		var target_quat = Quaternion.from_euler(target_camera_rot * PI / 180.0)
 		main_camera.rotation = current_quat.slerp(target_quat, delta * 3.0).get_euler()
-	
-	# Cập nhật chips labels
-	_update_chips_labels()
 
 func _on_player_turn_started(player_id: String) -> void:
 	# Focus nhẹ (dịch tầm nhìn) về phía người chơi đang hành động
@@ -311,7 +310,7 @@ func _setup_players() -> void:
 				player_node = HumanPlayer.new("You", human_chips)
 				player_node.name = "HumanPlayer"
 			else:
-				player_node = AIPlayer.new("Bot_" + str(i), 1000)
+				player_node = AIPlayer.new("Bot_" + str(i), human_chips)
 				player_node.name = "Bot_" + str(i)
 				
 			player_node.seat_position = pos
