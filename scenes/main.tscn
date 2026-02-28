@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=2 format=3 uid="uid://dxlv4mbiosjns"]
 
 [ext_resource type="Script" uid="uid://c7i7e5yh1t7mw" path="res://scripts/main.gd" id="1_main"]
 

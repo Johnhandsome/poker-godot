@@ -25,18 +25,22 @@ enum PlayerAction {
 	ALL_IN
 }
 
-signal state_changed(new_state: GameState, old_state: GameState)
 # Removed unused player_action_requested signal
 signal action_received(player_id: String, action: PlayerAction, amount: int)
 signal community_cards_changed(cards: Array)
 signal player_turn_started(player_id: String)
 signal hand_evaluated(results: Dictionary)
+signal state_changed(new_state: int, old_state: int)
+signal betting_round_ended() # Phát ra khi kết thúc một vòng cược để gom chip
 signal game_message(message: String)
 signal winners_declared(payouts: Dictionary, best_cards: Dictionary)
+signal player_eliminated(player_id: String)
+signal game_over(human_won: bool)
 
 var current_state: GameState = GameState.WAITING_FOR_PLAYERS
 var players: Array = [] # Array of player objects (nodes)
 var active_players: Array = [] # IDs of players still in the hand
+var dealer_player_id: String = "" # Track dealer by ID to handle eliminations
 var dealer_index: int = 0
 var current_player_index: int = 0
 var last_aggressor_index: int = 0
@@ -62,7 +66,8 @@ func start_game():
 		emit_signal("game_message", "Need at least 2 players to start.")
 		return
 		
-	dealer_index = randi() % players.size()
+	# Khởi tạo dealer ngẫu nhiên lần đầu tiên
+	dealer_player_id = players[randi() % players.size()].id
 	_start_new_round()
 
 func _start_new_round():
@@ -74,17 +79,55 @@ func _start_new_round():
 	community_cards.clear()
 	emit_signal("community_cards_changed", community_cards)
 	
+	# Tìm vị trí Dealer hiện tại trong danh sách vật lý
+	var phys_dealer_idx = 0
+	for i in range(players.size()):
+		if players[i].id == dealer_player_id:
+			phys_dealer_idx = i
+			break
+			
+	# Di chuyển Dealer sang người ngồi cạnh còn tiền
+	while true:
+		phys_dealer_idx = (phys_dealer_idx + 1) % players.size()
+		if players[phys_dealer_idx].chips > 0:
+			break
+	dealer_player_id = players[phys_dealer_idx].id
+	
 	active_players.clear()
-	for player in players:
-		if player.chips > 0:
-			player.reset_for_new_round()
-			active_players.append(player.id)
+	# Tạo danh sách active players bắt đầu từ Small Blind (người bên trái dealer) 
+	# để index dễ tính toán (SB=0, BB=1, UTG=2)
+	var start_idx = (phys_dealer_idx + 1) % players.size()
+	for i in range(players.size()):
+		var p_idx = (start_idx + i) % players.size()
+		var p = players[p_idx]
+		if p.chips > 0:
+			p.reset_for_new_round()
+			active_players.append(p.id)
+		elif not p.is_eliminated:
+			p.is_eliminated = true
+			emit_signal("player_eliminated", p.id)
+			
+	# Kiểm tra Win / Loss Game Over
+	var human_alive = false
+	var bots_alive = 0
+	for p in players:
+		if not p.is_eliminated:
+			if not p.is_ai: human_alive = true
+			else: bots_alive += 1
+			
+	if not human_alive:
+		emit_signal("game_over", false) # Busted
+		return
+	elif bots_alive == 0:
+		emit_signal("game_over", true) # Won
+		return
 			
 	if active_players.size() < 2:
 		emit_signal("game_message", "Game Over - Not enough players with chips.")
 		return
 		
-	dealer_index = (dealer_index + 1) % active_players.size()
+	# Vì danh sách active_players đã xoay bắt đầu từ SB, dealer luôn là người cuối cùng trong active_players
+	dealer_index = active_players.size() - 1
 	
 	_post_blinds()
 	_change_state(GameState.DEALING_HOLE_CARDS)
@@ -95,14 +138,15 @@ func _start_new_round():
 	_start_betting_round()
 
 func _post_blinds():
-	# Helper to find next active player index
-	var sb_idx = (dealer_index + 1) % active_players.size()
-	var bb_idx = (dealer_index + 2) % active_players.size()
+	# Vì list array active_players đã được căn chỉnh bắt đầu từ SB
+	# (Index 0 = SB, Index 1 = BB). Ngoại trừ Heads-up (2 người).
+	var sb_idx = 0
+	var bb_idx = 1
 	
-	# In heads-up (2 players), dealer is SB
+	# In heads-up (2 players), dealer (index 1) is SB, player 0 is BB
 	if active_players.size() == 2:
-		sb_idx = dealer_index
-		bb_idx = (dealer_index + 1) % active_players.size()
+		sb_idx = 1 # Dealer
+		bb_idx = 0
 		
 	var sb_player = _get_player_by_id(active_players[sb_idx])
 	var bb_player = _get_player_by_id(active_players[bb_idx])
@@ -114,8 +158,13 @@ func _post_blinds():
 	min_raise = big_blind
 	
 	# Action starts UTG (Under the Gun), which is after BB
-	current_player_index = (bb_idx + 1) % active_players.size()
-	last_aggressor_index = bb_idx # Action closes on BB if no raises
+	if active_players.size() == 2:
+		current_player_index = sb_idx # Heads up: SB acts first pre-flop
+	else:
+		current_player_index = 2 % active_players.size() # Index sau BB
+	
+	# Action closes on BB if no raises
+	last_aggressor_index = current_player_index
 
 func _deal_hole_cards_async():
 	for _i in range(2):
@@ -181,6 +230,7 @@ func _next_player_turn():
 
 func _end_betting_round():
 	pot_manager.gather_bets(active_players)
+	emit_signal("betting_round_ended")
 	current_bet = 0
 	min_raise = big_blind
 	
@@ -218,8 +268,11 @@ func _end_betting_round():
 			_handle_showdown()
 
 func _reset_turn_order():
-	current_player_index = (dealer_index + 1) % active_players.size()
-	last_aggressor_index = current_player_index # Close action on the button
+	# Sau Flop, người đầu tiên bên trái Dealer (người đầu danh sách nếu chưa Fold)
+	# Tuy nhiên do index đã thay đổi nếu có người Fold/All-in, cần reset đơn giản:
+	# Bắt đầu vòng sau round là đi từ Index 0 (vì Index 0 luôn là SB hoặc người tiếp theo)
+	current_player_index = 0
+	last_aggressor_index = current_player_index # Nếu ai cũng Check thì end round khi tới người đóng
 
 func _deal_community_cards_async(count: int):
 	# Burn a card
@@ -256,31 +309,47 @@ func _handle_showdown():
 		p.chips += payouts[p_id]
 		emit_signal("game_message", p.id + " thắng $" + str(payouts[p_id]) + "!")
 		
+	# Lưu tiến trình bankroll vào ổ cứng
+	_save_human_progress()
+		
 	_change_state(GameState.ROUND_END)
 	
 	# Auto-start round mới sau 4 giây bằng Callable (tránh lỗi Lambda capture freed)
 	get_tree().create_timer(4.0).timeout.connect(Callable(self, "_start_new_round"))
 
+# Lưu dữ liệu người chơi thật vào cuối ván
+func _save_human_progress() -> void:
+	var human = _get_player_by_id("You")
+	var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+	if human and sm:
+		sm.update_chips(human.chips)
+		sm.add_game_played()
+
 # --- Callbacks from player logic ---
 
 func process_player_action(player_id: String, action: PlayerAction, amount: int = 0):
 	var p = _get_player_by_id(player_id)
+	var p_index = active_players.find(player_id)
 	
 	match action:
 		PlayerAction.FOLD:
 			p.is_folded = true
-			active_players.erase(player_id)
-			if active_players.size() == 1:
-				# Everyone folded, end round immediately
+			# KHÔNG XÓA KHỎI active_players Ở ĐÂY để tránh lật index của người tiếp theo.
+			# Thay vào đó chỉ đánh dấu is_folded = true.
+			
+			# Kiểm tra xem chỉ còn 1 người chưa fold không
+			var active_unfolded = 0
+			for pid in active_players:
+				if not _get_player_by_id(pid).is_folded:
+					active_unfolded += 1
+			
+			if active_unfolded == 1:
 				_end_betting_round()
 				return
 				
 		PlayerAction.CHECK:
-			# Player checks, meaning they match the current bet (which is 0 for them)
-			# or they are already matched. No chips are added.
-			# The original logic `min(current_bet - p.current_bet, p.chips)` would result in 0 if matched.
 			var amount_to_check = min(current_bet - p.current_bet, p.chips)
-			_process_bet(p, amount_to_check) # This will process 0 if already matched
+			_process_bet(p, amount_to_check) 
 			
 		PlayerAction.CALL:
 			var amount_to_call = current_bet - p.current_bet
@@ -288,39 +357,59 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 				amount_to_call = p.chips
 				p.is_all_in = true
 			_process_bet(p, amount_to_call)
-			amount = amount_to_call # Cập nhật amount thật để UI hiện thị đúng số tiền call thay vì 0
+			amount = amount_to_call
 			
 		PlayerAction.RAISE:
-			# amount here is the total new bet they want to make
 			var added_amount = amount - p.current_bet
 			if added_amount >= p.chips:
 				added_amount = p.chips
 				p.is_all_in = true
 				
 			_process_bet(p, added_amount)
-			var raise_amount = amount - current_bet
+			var raise_amount = p.current_bet - current_bet
 			if raise_amount >= min_raise:
 				min_raise = raise_amount
+				last_aggressor_index = p_index # Cập nhật người đóng action
 			current_bet = p.current_bet
-			last_aggressor_index = current_player_index
 			
 		PlayerAction.ALL_IN:
 			var all_in_amount = p.chips
 			_process_bet(p, all_in_amount)
 			p.is_all_in = true
-			amount = all_in_amount # Cập nhật cho UI
+			amount = all_in_amount 
+			
 			if p.current_bet > current_bet:
 				var raise_amount = p.current_bet - current_bet
-				if raise_amount > min_raise:
+				# Luật Hold'em: All-in phải lớn hơn hoặc bằng min_raise mới được tính là "full raise" 
+				# để mở lại vòng cược (reopen betting) cho những người đã hành động.
+				if raise_amount >= min_raise:
 					min_raise = raise_amount
+					last_aggressor_index = p_index # Cập nhật người đóng vì đây là full raise
 				current_bet = p.current_bet
-				last_aggressor_index = current_player_index
 				
 	emit_signal("action_received", player_id, action, amount)
 	
-	current_player_index = (current_player_index + 1) % active_players.size()
+	# Xử lý lưu ngay lập tức ngay thời điểm Human ra quyết định (chống thoát game)
+	var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+	if player_id == "You" and sm:
+		var p_human = _get_player_by_id("You")
+		sm.update_chips(p_human.chips)
+	
+	current_player_index = (p_index + 1) % active_players.size()
+	
 	if current_player_index == last_aggressor_index:
-		_end_betting_round()
+		# Kiểm tra xe còn ai chưa call đủ tiền không (vì all-in short stack không đổi last_aggressor_index nhưng vẫn thay đổi current_bet)
+		var all_matched = true
+		for pid in active_players:
+			var px = _get_player_by_id(pid)
+			if not px.is_folded and not px.is_all_in and px.current_bet < current_bet:
+				all_matched = false
+				break
+		
+		if all_matched:
+			_end_betting_round()
+		else:
+			_next_player_turn()
 	else:
 		_next_player_turn()
 
@@ -331,6 +420,11 @@ func _process_bet(player, amount: int):
 	pot_manager.add_bet(player.id, amount)
 	if player.chips == 0:
 		player.is_all_in = true
+	
+	# Xử lý lưu ngay lập tức nếu là rớt tiền để chống người chơi thoát ra (cheat)
+	var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+	if player.id == "You" and sm:
+		sm.update_chips(player.chips)
 
 # --- Helpers ---
 

@@ -67,10 +67,9 @@ static func _create_card_texture(card: Card) -> ImageTexture:
 	# Nền trắng kem
 	img.fill(Color(0.97, 0.95, 0.92))
 	
-	# Viền đen dày
-	_draw_rect_outline(img, 0, 0, CARD_WIDTH - 1, CARD_HEIGHT - 1, Color(0.15, 0.15, 0.15), 4)
-	# Viền trong mỏng
-	_draw_rect_outline(img, 6, 6, CARD_WIDTH - 7, CARD_HEIGHT - 7, Color(0.7, 0.7, 0.7), 1)
+	# Viền mỏng nhạt (không còn viền đen dày)
+	_draw_rect_outline(img, 0, 0, CARD_WIDTH - 1, CARD_HEIGHT - 1, Color(0.6, 0.6, 0.6), 2)
+	_draw_rect_outline(img, 4, 4, CARD_WIDTH - 5, CARD_HEIGHT - 5, Color(0.8, 0.8, 0.78), 1)
 	
 	# Màu chất
 	var suit_color = Color(0.85, 0.05, 0.05) if card.is_red() else Color(0.1, 0.1, 0.1)
@@ -99,17 +98,17 @@ static func _create_back_texture() -> ImageTexture:
 	# Nền xanh đậm sang trọng
 	img.fill(Color(0.08, 0.15, 0.45))
 	
-	# Viền vàng
-	_draw_rect_outline(img, 0, 0, CARD_WIDTH - 1, CARD_HEIGHT - 1, Color(0.85, 0.75, 0.3), 6)
-	_draw_rect_outline(img, 16, 16, CARD_WIDTH - 17, CARD_HEIGHT - 17, Color(0.85, 0.75, 0.3), 3)
+	# Viền vàng mỏng
+	_draw_rect_outline(img, 0, 0, CARD_WIDTH - 1, CARD_HEIGHT - 1, Color(0.75, 0.65, 0.25), 3)
+	_draw_rect_outline(img, 10, 10, CARD_WIDTH - 11, CARD_HEIGHT - 11, Color(0.70, 0.60, 0.20), 2)
 	
-	# Hoa văn đan chéo
-	for y in range(24, CARD_HEIGHT - 24, 16):
-		for x in range(24, CARD_WIDTH - 24, 16):
-			if (x + y) % 32 < 16:
-				_draw_filled_rect(img, x, y, x + 7, y + 7, Color(0.12, 0.20, 0.50))
+	# Hoa văn nhẹ nhàng hơn (ít chi tiết = bớt moire khi nhìn từ xa)
+	for y in range(20, CARD_HEIGHT - 20, 24):
+		for x in range(20, CARD_WIDTH - 20, 24):
+			if (x + y) % 48 < 24:
+				_draw_filled_rect(img, x, y, x + 11, y + 11, Color(0.10, 0.18, 0.48))
 			else:
-				_draw_filled_rect(img, x, y, x + 7, y + 7, Color(0.18, 0.30, 0.60))
+				_draw_filled_rect(img, x, y, x + 11, y + 11, Color(0.14, 0.24, 0.52))
 	
 	# Kim cương lớn ở giữa
 	_draw_diamond(img, CARD_WIDTH / 2, CARD_HEIGHT / 2, 50, Color(0.9, 0.8, 0.3))

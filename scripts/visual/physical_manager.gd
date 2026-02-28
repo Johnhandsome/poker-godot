@@ -19,6 +19,10 @@ var _action_labels: Dictionary = {} # player_id -> Label3D
 var _player_cards: Dictionary = {} # player_id -> Array[PhysicalCard]
 # Track physical chips currently on table
 var _spawned_chips: Array[PhysicalChip] = []
+# Dealer Button 3D
+var _dealer_button_label: Label3D = null
+# Player HUDs
+var _player_huds: Dictionary = {} # player_id -> Label3D
 
 func _ready() -> void:
 	# Tự động tạo PackedScene cho Card và Chip bằng code thay vì tạo file .tscn trong Editor
@@ -27,15 +31,31 @@ func _ready() -> void:
 
 	# Thêm sàn để bài/chip không rơi vô tận
 	_setup_floor()
+	
+	# Khởi tạo Label3D cho Dealer Button
+	_dealer_button_label = Label3D.new()
+	_dealer_button_label.text = " D "
+	_dealer_button_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_dealer_button_label.modulate = Color(1.0, 0.9, 0.2) # Màu vàng
+	_dealer_button_label.outline_modulate = Color(0.1, 0.1, 0.1, 1.0)
+	_dealer_button_label.font_size = 48
+	_dealer_button_label.pixel_size = 0.006
+	_dealer_button_label.outline_size = 12
+	add_child(_dealer_button_label)
+	_dealer_button_label.hide()
 
 	if game_manager:
 		game_manager.state_changed.connect(_on_game_state_changed)
 		game_manager.community_cards_changed.connect(_on_community_cards_dealt)
 		game_manager.action_received.connect(_on_player_action)
 		game_manager.winners_declared.connect(_on_winners_declared)
+		game_manager.betting_round_ended.connect(_gather_chips_to_pot)
+		game_manager.player_eliminated.connect(_on_player_eliminated)
 
 	# Chờ 1 frame để TableBuilder kịp register players
 	await get_tree().process_frame
+	
+	_setup_player_huds()
 
 	if game_manager:
 		# Lắng nghe sự kiện Player bốc bài
@@ -85,10 +105,10 @@ func _build_card_prefab() -> PackedScene:
 	mesh.size = Vector2(w, h)
 	
 	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(1, 1, 1)
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED # Đảm bảo bài luôn sáng rực
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED # Hiện cả 2 mặt (trước/sau)
+	mat.albedo_color = Color(0.82, 0.82, 0.82) # Không trắng chói — dịu hơn dưới đèn
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mesh.material = mat
 	
 	mesh_inst.mesh = mesh
@@ -105,55 +125,70 @@ func _build_chip_prefab() -> PackedScene:
 	root.name = "PhysicalChip"
 	root.set_script(load("res://scripts/physical/physical_chip.gd"))
 	
-	# Collision — chip lớn hơn, dày hơn
 	var col = CollisionShape3D.new()
 	var cyl = CylinderShape3D.new()
 	cyl.radius = 0.12
-	cyl.height = 0.025
+	cyl.height = 0.03
 	col.shape = cyl
 	root.add_child(col)
 	col.owner = root
 	
-	# Mesh chính — chip poker tròn, mịn
+	# Body chính — sắc nét, chip dày hơn
 	var mesh_inst = MeshInstance3D.new()
 	var mesh = CylinderMesh.new()
 	mesh.top_radius = cyl.radius
 	mesh.bottom_radius = cyl.radius
 	mesh.height = cyl.height
-	mesh.radial_segments = 32  # Mịn tròn, không răng cưa
-	mesh.rings = 1
+	mesh.radial_segments = 48
+	mesh.rings = 2
 	
 	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.15, 0.15) # Chip đỏ mặc định
-	mat.metallic = 0.3
-	mat.metallic_specular = 0.6
-	mat.roughness = 0.35
+	mat.albedo_color = Color(0.7, 0.08, 0.08)
+	mat.metallic = 0.15
+	mat.roughness = 0.45
 	mesh.material = mat
 	mesh_inst.mesh = mesh
 	mesh_inst.name = "MeshInstance3D"
 	root.add_child(mesh_inst)
 	mesh_inst.owner = root
 	
-	# Viền trắng (edge stripe) — vành mỏng quanh chip
-	var edge_mesh_inst = MeshInstance3D.new()
+	# Vân viền ngoài (edge stripe) — trắng
+	var edge = MeshInstance3D.new()
 	var edge_mesh = TorusMesh.new()
-	edge_mesh.inner_radius = cyl.radius - 0.008
-	edge_mesh.outer_radius = cyl.radius + 0.002
-	edge_mesh.rings = 24
-	edge_mesh.ring_segments = 12
-	
+	edge_mesh.inner_radius = cyl.radius - 0.006
+	edge_mesh.outer_radius = cyl.radius + 0.003
+	edge_mesh.rings = 32
+	edge_mesh.ring_segments = 8
 	var edge_mat = StandardMaterial3D.new()
-	edge_mat.albedo_color = Color(0.9, 0.9, 0.85)
-	edge_mat.metallic = 0.2
-	edge_mat.roughness = 0.4
+	edge_mat.albedo_color = Color(0.92, 0.90, 0.85)
+	edge_mat.metallic = 0.1
+	edge_mat.roughness = 0.5
 	edge_mesh.material = edge_mat
-	edge_mesh_inst.mesh = edge_mesh
-	edge_mesh_inst.name = "EdgeStripe"
-	root.add_child(edge_mesh_inst)
-	edge_mesh_inst.owner = root
+	edge.mesh = edge_mesh
+	edge.name = "EdgeStripe"
+	root.add_child(edge)
+	edge.owner = root
+	
+	# Vân trang trí bên trong (inner ring)
+	var inner = MeshInstance3D.new()
+	var inner_mesh = TorusMesh.new()
+	inner_mesh.inner_radius = cyl.radius * 0.55
+	inner_mesh.outer_radius = cyl.radius * 0.62
+	inner_mesh.rings = 32
+	inner_mesh.ring_segments = 6
+	var inner_mat = StandardMaterial3D.new()
+	inner_mat.albedo_color = Color(0.88, 0.85, 0.78)
+	inner_mat.metallic = 0.08
+	inner_mat.roughness = 0.55
+	inner_mesh.material = inner_mat
+	inner.mesh = inner_mesh
+	inner.name = "InnerRing"
+	root.add_child(inner)
+	inner.owner = root
 	
 	var ap = AudioStreamPlayer3D.new()
 	ap.name = "AudioStreamPlayer3D"
+	ap.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
 	root.add_child(ap)
 	ap.owner = root
 	
@@ -231,47 +266,172 @@ func _on_community_cards_dealt(cards: Array) -> void:
 		
 		_spawned_community_cards.append(p_card)
 
-func _on_physical_action(action: int, amount: int, force: float, player: Player) -> void:
-	# Ném chip theo số lượng amount
+func _on_physical_action(action: int, amount: int, _force: float, player: Player) -> void:
+	# Đẩy chip mượt mà ra giữa bàn
 	if action == GameManager.PlayerAction.CALL or action == GameManager.PlayerAction.RAISE or action == GameManager.PlayerAction.ALL_IN:
-		if amount <= 0: return
+		# Tính số tiền thực cho CALL (bot gửi amount=0)
+		var actual_amount = amount
+		if action == GameManager.PlayerAction.CALL and actual_amount <= 0:
+			if game_manager:
+				actual_amount = game_manager.current_bet - player.current_bet
+		if actual_amount <= 0: return
 		
 		# Chia amount thành các chip mệnh giá khác nhau
-		var remaining = amount
+		var remaining = actual_amount
 		var chip_values = []
 		var denoms = [500, 100, 50, 25, 10]
 		
 		for denom in denoms:
-			while remaining >= denom and chip_values.size() < 25: # Max 25 chips để khỏi lag
+			while remaining >= denom and chip_values.size() < 15: # Max 15 chips
 				chip_values.append(denom)
 				remaining -= denom
 				
-		# Thuộc phần dư nếu có (nếu quá giới hạn 25 chip) thành 1 chip to
 		if remaining > 0:
 			chip_values.append(remaining)
 		
-		for val in chip_values:
+		var delay_accum = 0.0
+		for idx in range(chip_values.size()):
+			var val = chip_values[idx]
 			var chip = chip_scene.instantiate() as PhysicalChip
 			add_child(chip)
 			chip.set_value(val)
+			chip.freeze = true  # Bắt đầu đông cứng — tween điều khiển
 			
-			var spawn_pos = player.seat_position + Vector3(0, 0.2, 0)
-			# Thêm chút sai số vị trí để các chip rơi không đè trùng 1 điểm
-			spawn_pos.x += randf_range(-0.1, 0.1)
-			spawn_pos.z += randf_range(-0.1, 0.1)
-			
-			spawn_pos = spawn_pos.move_toward(Vector3.ZERO, 0.3) 
+			# Spawn gần player
+			var spawn_pos = player.seat_position
+			spawn_pos.y = 0.15
+			var dir_to_center = -player.seat_position.normalized()
+			spawn_pos += dir_to_center * 0.3
 			chip.global_position = spawn_pos
 			
-			var pot_target = spawn_pos.move_toward(Vector3.ZERO, randf_range(1.0, 1.4))
-			chip.throw_towards(pot_target, force)
+			# Vị trí đích: vòng quanh khu vực giữa (tránh che bài)
+			var dist_from_center = randf_range(1.2, 2.0)
+			var target_pos = dir_to_center * -dist_from_center
+			target_pos.x += randf_range(-0.3, 0.3)
+			target_pos.z += randf_range(-0.3, 0.3)
+			
+			# Vị trí thả chip: ngay phía trên target để rơi xuống tự nhiên
+			var drop_pos = Vector3(target_pos.x, 0.4 + idx * 0.05, target_pos.z)
+			
+			# Tween arc → drop position, sau đó unfreeze cho vật lý xử lý landing
+			var tween = create_tween()
+			if delay_accum > 0:
+				tween.tween_interval(delay_accum)
+			
+			# Bay cung nhẹ lên
+			var mid = (spawn_pos + drop_pos) / 2.0
+			mid.y = 0.6 + idx * 0.03
+			tween.tween_property(chip, "global_position", mid, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			# Bay tới vị trí thả
+			tween.tween_property(chip, "global_position", drop_pos, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			# Unfreeze — vật lý tiếp quản: chip rơi, nảy, lắc, nằm yên
+			tween.tween_callback(func(): 
+				chip.freeze = false
+				chip.is_settled = false
+				chip.time_settled = 0.0
+				
+				# Ép phát âm thanh rớt mâm ngay lập tức để không bị trễ tiếng
+				var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+				if synth: synth.play_chip_clink()
+					
+				# Thêm xoay nhẹ khi rơi cho tự nhiên
+				chip.apply_torque_impulse(Vector3(randf_range(-0.3, 0.3), randf_range(-0.2, 0.2), randf_range(-0.3, 0.3)))
+			)
 			
 			_spawned_chips.append(chip)
+			delay_accum += 0.06
 
+# ---- PLAYER HUDS ----
+func _setup_player_huds() -> void:
+	if not game_manager: return
+	
+	for p in game_manager.players:
+		var hud = Label3D.new()
+		hud.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		hud.pixel_size = 0.006
+		hud.outline_size = 10
+		hud.font_size = 32
+		hud.text = p.id + "\n$" + str(p.chips)
+		
+		if p.is_ai:
+			hud.modulate = Color(0.8, 0.9, 1.0)
+		else:
+			hud.modulate = Color(1.0, 0.9, 0.5) # Human nổi bật hơn
+			
+		hud.position = p.seat_position + Vector3(0, 0.35, 0) # Nằm ngay trên đầu chip/bài
+		add_child(hud)
+		_player_huds[p.id] = hud
+
+func _update_player_huds() -> void:
+	if not game_manager: return
+	
+	for p in game_manager.players:
+		if _player_huds.has(p.id):
+			var hud = _player_huds[p.id]
+			if is_instance_valid(hud):
+				hud.text = p.id + "\n$" + str(p.chips)
+				if p.is_folded or p.chips == 0 and not game_manager.active_players.has(p.id):
+					hud.modulate.a = 0.4 # Làm mờ người đã fold hoặc hết tiền
+				else:
+					hud.modulate.a = 1.0
+
+func _on_player_eliminated(player_id: String) -> void:
+	if _player_huds.has(player_id):
+		var hud = _player_huds[player_id]
+		if is_instance_valid(hud):
+			hud.queue_free()
+		_player_huds.erase(player_id)
+
+# ---- POT ANIMATIONS ----
+func _gather_chips_to_pot() -> void:
+	if _spawned_chips.size() == 0: return
+	
+	var gather_tween = create_tween()
+	gather_tween.set_parallel(true)
+	var delay = 0.0
+	
+	# Phát âm thanh lùa tiền (lấy 1 tiếng chip rớt ngẫu nhiên đóng vai trò lùa)
+	var sweep_sound = preload("res://assets/audio/chip_drop_1.wav")
+	var audio_player = AudioStreamPlayer.new()
+	audio_player.stream = sweep_sound
+	audio_player.pitch_scale = 0.8 # Hạ tông thành tiếng quét
+	audio_player.volume_db = -2.0
+	add_child(audio_player)
+	audio_player.play()
+	
+	for chip in _spawned_chips:
+		if is_instance_valid(chip):
+			# Làm cho chip mất tính phản hồi vật lý để bay thẳng không bị kẹt
+			chip.freeze = true 
+			chip.collision_layer = 0
+			chip.collision_mask = 0
+			
+			# Gom về giữa bàn, hơi rải rác một chút cho tự nhiên
+			var target_pos = dealer_pos + Vector3(randf_range(-0.2, 0.2), randf_range(0.0, 0.1), randf_range(-0.2, 0.2))
+			
+			gather_tween.tween_property(chip, "global_position", target_pos, 0.4 + delay)\
+				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			
+			delay += 0.02 # Các chip lùa vào lần lượt như chổi quyét
+			
+	gather_tween.chain().tween_callback(audio_player.queue_free)
+
+# ---- EVENT HANDLERS ----
 func _on_game_state_changed(new_state: int, _old_state: int) -> void:
+	_update_player_huds()
 	# Cleanup khi bắt đầu round mới
 	if new_state == GameManager.GameState.WAITING_FOR_PLAYERS:
 		_cleanup_round()
+	elif new_state == GameManager.GameState.DEALING_HOLE_CARDS:
+		if game_manager and _dealer_button_label:
+			_dealer_button_label.show()
+			var dlr_id = game_manager.dealer_player_id
+			var dlr = game_manager._get_player_by_id(dlr_id)
+			if dlr:
+				# Đặt Dealer button ngay cạnh ghế người chơi
+				var offset_dir = dlr.seat_position.normalized()
+				var right_dir = Vector3.UP.cross(offset_dir).normalized()
+				_dealer_button_label.position = dlr.seat_position + right_dir * 0.4 + Vector3(0, 0.05, 0)
 	elif new_state == GameManager.GameState.SHOWDOWN:
 		# Ẩn các label action (CALL/RAISE) cũ để lấy chỗ hiện thông báo người thắng
 		for pid in _action_labels:
@@ -281,6 +441,8 @@ func _on_game_state_changed(new_state: int, _old_state: int) -> void:
 		_action_labels.clear()
 
 func _on_player_action(player_id: String, action: int, amount: int) -> void:
+	_update_player_huds()
+	
 	# Hiển thị action label nổi trên đầu player
 	if not game_manager:
 		return
@@ -288,6 +450,10 @@ func _on_player_action(player_id: String, action: int, amount: int) -> void:
 	var player = game_manager._get_player_by_id(player_id)
 	if not player:
 		return
+	
+	# === FOLD ANIMATION: Bài bay vào giữa bàn và biến mất ===
+	if action == GameManager.PlayerAction.FOLD:
+		_animate_fold_cards(player_id)
 	
 	# Xóa label cũ nếu có
 	if _action_labels.has(player_id):
@@ -445,10 +611,24 @@ func _on_winners_declared(payouts: Dictionary, best_cards: Dictionary) -> void:
 		var delay = 1.0 # Đợi lật bài hiển thị kết quả 1 giây trước khi kéo tiền
 		for chip in _spawned_chips:
 			if is_instance_valid(chip):
-				chip.fly_to_winner(center_winner_pos, delay)
+				chip.freeze = true
+				chip.collision_layer = 0
+				chip.collision_mask = 0
+				
+				var flight_tween = create_tween()
+				flight_tween.tween_interval(delay)
+				
+				# Quỹ đạo bay vòng cung
+				var mid_pos = (chip.global_position + center_winner_pos) / 2.0
+				mid_pos.y += 1.0
+				
+				flight_tween.tween_property(chip, "global_position", mid_pos, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				flight_tween.tween_property(chip, "global_position", center_winner_pos, 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+				
+				# Bay tới nơi thì xóa chip để đỡ nặng máy, tiền đã cộng vào hud
+				flight_tween.tween_callback(chip.queue_free)
 				delay += 0.02
 				
-		# Mảng được giải phóng dần trong fly_to_winner
 		_spawned_chips.clear()
 
 func _is_card_in_array(card: Card, card_array: Array) -> bool:
@@ -457,3 +637,53 @@ func _is_card_in_array(card: Card, card_array: Array) -> bool:
 		if c.suit == card.suit and c.rank == card.rank:
 			return true
 	return false
+
+func _animate_fold_cards(player_id: String) -> void:
+	if not _player_cards.has(player_id):
+		return
+	
+	var cards = _player_cards[player_id]
+	var delay = 0.0
+	
+	for p_card in cards:
+		if not is_instance_valid(p_card):
+			continue
+		
+		# Lật úp bài nếu đang ngửa
+		if p_card.is_face_up:
+			p_card.is_face_up = false
+			p_card._update_visuals()
+		
+		# Animation: bay vào giữa bàn → thu nhỏ → biến mất
+		var tween = create_tween()
+		tween.set_parallel(false)
+		
+		# Đợi delay nhẹ giữa các lá
+		if delay > 0:
+			tween.tween_interval(delay)
+		
+		# Bay lên một chút và phát âm thanh trượt
+		var mid_pos = p_card.global_position
+		mid_pos.y += 0.5
+		
+		tween.tween_callback(func():
+			var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+			if synth: synth.play_card_slide()
+		)
+		
+		tween.tween_property(p_card, "global_position", mid_pos, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		
+		# Bay vào giữa bàn (dealer_pos)
+		var center = Vector3(0, 0.3, 0)
+		tween.tween_property(p_card, "global_position", center, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		
+		# Thu nhỏ và biến mất
+		tween.tween_property(p_card, "scale", Vector3(0.01, 0.01, 0.01), 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		
+		# Xóa card
+		tween.tween_callback(p_card.queue_free)
+		
+		delay += 0.1
+	
+	# Xóa khỏi tracking sau khi animation chạy
+	_player_cards.erase(player_id)

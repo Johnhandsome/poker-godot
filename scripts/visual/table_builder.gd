@@ -28,29 +28,26 @@ func _ready() -> void:
 func _setup_environment() -> void:
 	var env = Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.05, 0.05, 0.08) # Không gian quán bar tối màu
+	env.background_color = Color(0.02, 0.02, 0.03) # Phòng tối đen
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.35, 0.35, 0.38) # Ánh sáng nền sáng hơn để thấy rõ bàn
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES # Tone màu điện ảnh
+	env.ambient_light_color = Color(0.10, 0.10, 0.11) # Phòng tối nhưng thấy được hình dáng
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.glow_enabled = true
-	env.glow_intensity = 0.4
-	env.glow_strength = 0.6
-	env.glow_bloom = 0.05
+	env.glow_intensity = 0.3
+	env.glow_strength = 0.4
+	env.glow_bloom = 0.15  # Bloom nhẹ tạo cảm giác ấm cúng
 	
 	var world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 	
-	# Bật MSAA 4x để khử răng cưa viền bài và chip
 	get_viewport().msaa_3d = Viewport.MSAA_4X
 
 func _setup_table() -> void:
-	# 1. Tạo mặt bàn (Bầu dục hoặc tròn)
 	var table_static = StaticBody3D.new()
 	table_static.name = "PokerTable"
 	add_child(table_static)
 	
-	# Hình dáng va chạm
 	var push_shape = CollisionShape3D.new()
 	var cyl_shape = CylinderShape3D.new()
 	cyl_shape.radius = table_radius
@@ -58,18 +55,18 @@ func _setup_table() -> void:
 	push_shape.shape = cyl_shape
 	table_static.add_child(push_shape)
 	
-	# Hình ảnh mặt bàn — high-poly
+	# Mặt bàn — vải nỉ xanh đậm như casino thật
 	var table_mesh_inst = MeshInstance3D.new()
 	var cyl_mesh = CylinderMesh.new()
 	cyl_mesh.top_radius = table_radius
 	cyl_mesh.bottom_radius = table_radius
 	cyl_mesh.height = 0.2
-	cyl_mesh.radial_segments = 64  # Mịn tròn
+	cyl_mesh.radial_segments = 64
 	cyl_mesh.rings = 2
 	
 	var table_mat = StandardMaterial3D.new()
-	table_mat.albedo_color = Color(0.08, 0.38, 0.14) # Xanh nỉ
-	table_mat.roughness = 0.92 # Vải nỉ rất nhám
+	table_mat.albedo_color = Color(0.04, 0.22, 0.08) # Xanh đậm như nỉ casino thật
+	table_mat.roughness = 0.95  # Vải nỉ rất nhám, không bóng
 	table_mat.metallic = 0.0
 	cyl_mesh.material = table_mat
 	
@@ -77,7 +74,7 @@ func _setup_table() -> void:
 	table_static.add_child(table_mesh_inst)
 	table_static.position = Vector3(0, -0.1, 0)
 	
-	# 2. Tạo viền bàn bọc da — high-poly
+	# Viền bàn gỗ mahogany đậm
 	var rim_mesh_inst = MeshInstance3D.new()
 	var tor_mesh = TorusMesh.new()
 	tor_mesh.inner_radius = table_radius - 0.15
@@ -86,9 +83,9 @@ func _setup_table() -> void:
 	tor_mesh.ring_segments = 24
 	
 	var rim_mat = StandardMaterial3D.new()
-	rim_mat.albedo_color = Color(0.22, 0.11, 0.03) # Nâu da đậm
-	rim_mat.roughness = 0.35
-	rim_mat.metallic = 0.05
+	rim_mat.albedo_color = Color(0.12, 0.05, 0.02) # Mahogany đậm
+	rim_mat.roughness = 0.55  # Gỗ đánh bóng nhẹ
+	rim_mat.metallic = 0.08  # Phản chiếu rất nhẹ như gỗ Veneer
 	tor_mesh.material = rim_mat
 	
 	rim_mesh_inst.mesh = tor_mesh
@@ -96,20 +93,33 @@ func _setup_table() -> void:
 	table_static.add_child(rim_mesh_inst)
 
 func _setup_lighting() -> void:
-	# Đèn DirectionalLight chiếu sáng toàn bộ không gian rõ ràng, ko gây vùng đen tụ bóng
+	# Không dùng DirectionalLight mạnh — phòng tối chỉ có đèn trên bàn
 	var main_light = DirectionalLight3D.new()
-	main_light.rotation_degrees = Vector3(-60, 45, 0)
-	main_light.light_color = Color(1.0, 0.95, 0.9)
-	main_light.light_energy = 1.5
+	main_light.rotation_degrees = Vector3(-55, 30, 0)
+	main_light.light_color = Color(0.95, 0.85, 0.7) # Vàng ấm
+	main_light.light_energy = 0.5  # Nhẹ — để thấy hình dáng
 	main_light.shadow_enabled = true
 	add_child(main_light)
 	
-	# Đèn bù sáng nhẹ để không bị xỉn
-	var fill_light = OmniLight3D.new()
-	fill_light.position = Vector3(0, 4, 0)
-	fill_light.light_energy = 0.5
-	fill_light.omni_range = 10.0
-	add_child(fill_light)
+	# Đèn trên bàn — nguồn sáng chính, ấm vàng
+	var table_lamp = SpotLight3D.new()
+	table_lamp.position = Vector3(0, 4, 0)
+	table_lamp.rotation_degrees = Vector3(-90, 0, 0)
+	table_lamp.light_energy = 3.5
+	table_lamp.light_color = Color(1.0, 0.88, 0.65)
+	table_lamp.spot_range = 10.0
+	table_lamp.spot_angle = 45.0
+	table_lamp.spot_attenuation = 1.0  # Mềm đều hơn
+	table_lamp.shadow_enabled = false  # Tắt shadow — tránh chấm đen giữa bàn
+	add_child(table_lamp)
+	
+	# Fill light nhẹ phía dưới để không bị đen hoàn toàn
+	var fill = OmniLight3D.new()
+	fill.position = Vector3(0, 2, 0)
+	fill.light_energy = 0.25
+	fill.light_color = Color(0.9, 0.8, 0.6)
+	fill.omni_range = 8.0
+	add_child(fill)
 
 var camera_rig: Node3D
 var main_camera: Camera3D
@@ -206,7 +216,11 @@ func _setup_players() -> void:
 		# Khởi tạo Player Node
 		var player_node: Player
 		if i == 0:
-			player_node = HumanPlayer.new("You", 1500)
+			var human_chips = 5000
+			var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+			if sm:
+				human_chips = sm.get_chips()
+			player_node = HumanPlayer.new("You", human_chips)
 			player_node.name = "HumanPlayer"
 		else:
 			player_node = AIPlayer.new("Bot_" + str(i), 1000)
@@ -232,6 +246,9 @@ func _create_seat_marker(pos: Vector3, player: Player) -> void:
 	mat.albedo_color = Color(0.15, 0.15, 0.2)
 	box.material = mat
 	
+	# Ẩn TẤT CẢ marker mesh — không hiện cục đen nào
+	marker_mesh.visible = false
+	
 	# Thêm vào tree trước rồi mới look_at
 	marker_mesh.position = pos
 	add_child(marker_mesh)
@@ -239,31 +256,31 @@ func _create_seat_marker(pos: Vector3, player: Player) -> void:
 	# Đặt marker quay hướng về giữa bàn
 	marker_mesh.look_at(Vector3.ZERO, Vector3.UP)
 	
-	# Dịch name tag lùi ra viền thêm chút
-	marker_mesh.translate(Vector3(0, 0, -0.9))
+	# Dịch name tag lùi ra ngoài viền bàn
+	marker_mesh.translate(Vector3(0, 0, -1.2))
 	
-	# Tên người chơi (billboard để luôn quay mặt vào camera)
+	# Tên người chơi — to hơn, màu dịu hơn
 	var name_label = Label3D.new()
 	name_label.text = player.id
-	name_label.pixel_size = 0.004
-	name_label.font_size = 24
+	name_label.pixel_size = 0.006
+	name_label.font_size = 36
 	name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	name_label.position = Vector3(0, 0.25, 0)
-	name_label.modulate = Color(1, 1, 1) if player.is_ai else Color(0.3, 1.0, 0.5)
-	name_label.outline_size = 8
-	name_label.outline_modulate = Color(0, 0, 0, 0.8)
+	name_label.position = Vector3(0, 0.35, 0)
+	name_label.modulate = Color(0.9, 0.85, 0.75) if player.is_ai else Color(0.5, 0.9, 0.6)
+	name_label.outline_size = 10
+	name_label.outline_modulate = Color(0, 0, 0, 0.6)
 	marker_mesh.add_child(name_label)
 	
-	# Chips label (cập nhật liên tục)
+	# Chips label — to hơn, vàng dịu
 	var chips_label = Label3D.new()
 	chips_label.text = "$" + str(player.chips)
-	chips_label.pixel_size = 0.003
-	chips_label.font_size = 20
+	chips_label.pixel_size = 0.005
+	chips_label.font_size = 28
 	chips_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	chips_label.position = Vector3(0, 0.15, 0)
-	chips_label.modulate = Color(1.0, 0.85, 0.2)
-	chips_label.outline_size = 6
-	chips_label.outline_modulate = Color(0, 0, 0, 0.7)
+	chips_label.modulate = Color(0.85, 0.75, 0.3)
+	chips_label.outline_size = 8
+	chips_label.outline_modulate = Color(0, 0, 0, 0.5)
 	marker_mesh.add_child(chips_label)
 	_chips_labels[player.id] = chips_label
 

@@ -12,11 +12,13 @@ config_version=5
 
 config/name="Godot Poker"
 config/description="Game Texas Hold'em Poker offline cho toi da 9 nguoi choi"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
+AudioSynthesizer="*res://scripts/core/audio_synthesizer.gd"
+SaveManager="*res://scripts/core/save_manager.gd"
 
 GameManager="*res://scripts/core/game_manager.gd"
 

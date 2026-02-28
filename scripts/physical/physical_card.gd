@@ -18,12 +18,12 @@ func _ready() -> void:
 	for child in get_children():
 		if child is MeshInstance3D:
 			mesh_instance = child
-			break
 	
-	# Tạo material mặt sau — dùng LINEAR filter để tránh viền đen
+	# Tạo material mặt sau
 	_back_material = StandardMaterial3D.new()
+	_back_material.albedo_color = Color(0.82, 0.82, 0.82)
 	_back_material.albedo_texture = CardTextureGenerator.get_back_texture()
-	_back_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_back_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	_back_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_back_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	
@@ -32,10 +32,11 @@ func _ready() -> void:
 
 func set_card_data(data: Card) -> void:
 	card_data = data
-	# Tạo material mặt trước — dùng LINEAR filter để tránh viền đen
+	# Tạo material mặt trước
 	_front_material = StandardMaterial3D.new()
+	_front_material.albedo_color = Color(0.82, 0.82, 0.82)
 	_front_material.albedo_texture = CardTextureGenerator.get_card_texture(card_data)
-	_front_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_front_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	_front_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_front_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_update_visuals()
@@ -66,12 +67,20 @@ func throw_to(target_pos: Vector3, duration: float = 0.25, _spin_force: float = 
 	var mid_pos = (global_position + target_pos) / 2.0
 	mid_pos.y += 0.8
 	
+	# Phát âm thanh chia bài trượt trên bàn
+	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if synth: synth.play_card_slide()
+	
 	tween.tween_property(self, "global_position", mid_pos, duration / 2.0).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(self, "global_position", target_pos, duration / 2.0).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 func flip() -> void:
 	is_face_up = !is_face_up
 	_update_visuals()
+	
+	# Phát âm thanh lật bài
+	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if synth: synth.play_ui_click()
 
 func dim() -> void:
 	if _front_material:

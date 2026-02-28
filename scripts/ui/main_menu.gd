@@ -1,0 +1,194 @@
+extends Control
+
+func _ready() -> void:
+	# Bật âm thanh Casino Ambience
+	var ambient_player = AudioStreamPlayer.new()
+	ambient_player.stream = preload("res://assets/audio/freesound_community-poker-room-33521.mp3")
+	ambient_player.volume_db = -5.0
+	ambient_player.finished.connect(func(): ambient_player.play())
+	add_child(ambient_player)
+	ambient_player.play()
+
+	# Tạo nền Gradient tỏa sáng nhẹ ở giữa bằng ColorRect đơn giản để tránh lỗi texture viền trắng
+	var bg = ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Màu nền chủ đạo
+	bg.color = Color(0.04, 0.08, 0.05, 1.0) 
+	add_child(bg)
+	
+	# Gradient sáng ở giữa
+	var glow = ColorRect.new()
+	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var mat = ShaderMaterial.new()
+	var shader_code = """
+	shader_type canvas_item;
+	void fragment() {
+		vec2 uv = UV - vec2(0.5);
+		float dist = length(uv);
+		float alpha = smoothstep(0.6, 0.1, dist);
+		COLOR = vec4(0.12, 0.20, 0.15, alpha * 0.8);
+	}
+	"""
+	var shader = Shader.new()
+	shader.code = shader_code
+	mat.shader = shader
+	glow.material = mat
+	add_child(glow)
+	
+	_spawn_floating_cards()
+	
+	var vbox = VBoxContainer.new()
+	# Đẩy anchor lên trên một chút để không bị lẹm nút Quit ở độ phân giải của User
+	vbox.set_anchors_preset(Control.PRESET_CENTER)
+	vbox.position = Vector2(0, -40) # Nhấc toàn bộ UI lên 40 pixels
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 25) # Giảm thêm khoảng cách một chút
+	add_child(vbox)
+	
+	var title = Label.new()
+	title.text = "TEXAS HOLD'EM\nGODOT POKER"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 64) # Slightly smaller font
+	title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.25)) # Màu vàng gold
+	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	title.add_theme_constant_override("shadow_offset_x", 4)
+	title.add_theme_constant_override("shadow_offset_y", 6)
+	title.add_theme_constant_override("shadow_outline_size", 4)
+	vbox.add_child(title)
+	
+	# Hiển thị Bankroll của người chơi từ file Save
+	var current_chips = 5000
+	var save_mgr = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+	if save_mgr:
+		current_chips = save_mgr.get_chips()
+	var bankroll_lbl = Label.new()
+	bankroll_lbl.text = "BANKROLL: $" + str(current_chips)
+	bankroll_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bankroll_lbl.add_theme_font_size_override("font_size", 28)
+	if current_chips > 0:
+		bankroll_lbl.add_theme_color_override("font_color", Color(0.6, 1.0, 0.6))
+	else:
+		bankroll_lbl.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
+	vbox.add_child(bankroll_lbl)
+	
+	# Nút Play
+	var btn_play = Button.new()
+	if current_chips > 0:
+		btn_play.text = "PLAY GAME"
+	else:
+		btn_play.text = "RESTART ($5000)"
+	btn_play.custom_minimum_size = Vector2(300, 70)
+	btn_play.add_theme_font_size_override("font_size", 32)
+	var style_play = StyleBoxFlat.new()
+	style_play.bg_color = Color(0.12, 0.16, 0.13, 0.98)
+	style_play.border_width_bottom = 4
+	style_play.border_color = Color(1.0, 0.85, 0.25)
+	style_play.corner_radius_top_left = 12
+	style_play.corner_radius_top_right = 12
+	style_play.corner_radius_bottom_left = 12
+	style_play.corner_radius_bottom_right = 12
+	var style_play_hover = style_play.duplicate()
+	style_play_hover.bg_color = Color(0.18, 0.24, 0.20, 0.98) # Sáng hơn khi hover
+	
+	btn_play.add_theme_stylebox_override("normal", style_play)
+	btn_play.add_theme_stylebox_override("hover", style_play_hover)
+	btn_play.add_theme_stylebox_override("pressed", style_play)
+	
+	btn_play.pressed.connect(func():
+		var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+		if synth: synth.play_ui_click()
+		
+		var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+		if sm and sm.get_chips() <= 0:
+			sm.reset_save()
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+	)
+	
+	# Hover tween cho btn_play
+	btn_play.mouse_entered.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_play, "scale", Vector2(1.05, 1.05), 0.1)
+	)
+	btn_play.mouse_exited.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_play, "scale", Vector2(1.0, 1.0), 0.1)
+	)
+	btn_play.pivot_offset = btn_play.custom_minimum_size / 2.0
+	
+	vbox.add_child(btn_play)
+	
+	# Nút Quit
+	var btn_quit = Button.new()
+	btn_quit.text = "QUIT"
+	btn_quit.custom_minimum_size = Vector2(300, 60)
+	btn_quit.add_theme_font_size_override("font_size", 24)
+	var style_quit = StyleBoxFlat.new()
+	style_quit.bg_color = Color(0.1, 0.1, 0.1, 0.8)
+	style_quit.corner_radius_top_left = 12
+	style_quit.corner_radius_top_right = 12
+	style_quit.corner_radius_bottom_left = 12
+	style_quit.corner_radius_bottom_right = 12
+	var style_quit_hover = style_quit.duplicate()
+	style_quit_hover.bg_color = Color(0.2, 0.2, 0.2, 0.8)
+	
+	btn_quit.add_theme_stylebox_override("normal", style_quit)
+	btn_quit.add_theme_stylebox_override("hover", style_quit_hover)
+	btn_quit.add_theme_stylebox_override("pressed", style_quit)
+	
+	btn_quit.pressed.connect(func():
+		var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+		if synth: synth.play_ui_click()
+		get_tree().quit()
+	)
+	
+	btn_quit.mouse_entered.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_quit, "scale", Vector2(1.05, 1.05), 0.1)
+	)
+	btn_quit.mouse_exited.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_quit, "scale", Vector2(1.0, 1.0), 0.1)
+	)
+	btn_quit.pivot_offset = btn_quit.custom_minimum_size / 2.0
+	
+	vbox.add_child(btn_quit)
+
+# ---- BACKGROUND ANIMATIONS ----
+func _spawn_floating_cards() -> void:
+	# Card generator
+	var gen = load("res://scripts/visual/card_texture_generator.gd").new()
+	
+	# Spawn 8 random floating cards
+	for i in range(8):
+		var card_rect = TextureRect.new()
+		var card = Card.new(randi_range(2, 14), randi() % 4)
+		card_rect.texture = gen.get_card_texture(card)
+		card_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		card_rect.custom_minimum_size = Vector2(150, 210)
+		card_rect.modulate = Color(1.0, 1.0, 1.0, 0.05) # Rất mờ chìm vào nền (5% opacity)
+		
+		add_child(card_rect)
+		
+		# Random starting positions (outside screen)
+		_reset_card_and_animate(card_rect)
+
+func _reset_card_and_animate(card_rect: TextureRect) -> void:
+	var screen_rect = get_viewport_rect()
+	var start_x = randf_range(-400, screen_rect.size.x + 400)
+	var start_y = screen_rect.size.y + 250
+	
+	card_rect.position = Vector2(start_x, start_y)
+	card_rect.rotation = randf_range(-PI, PI)
+	
+	var target_x = start_x + randf_range(-300, 300)
+	var target_y = -300
+	var target_rot = card_rect.rotation + randf_range(-PI, PI)
+	
+	var duration = randf_range(15.0, 25.0)
+	var tw = create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(card_rect, "position", Vector2(target_x, target_y), duration).set_delay(randf_range(0, 5))
+	tw.tween_property(card_rect, "rotation", target_rot, duration).set_delay(randf_range(0, 5))
+	
+	# Loop back when done
+	tw.chain().tween_callback(self._reset_card_and_animate.bind(card_rect))

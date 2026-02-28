@@ -6,6 +6,7 @@ var chips: int = 1000
 var current_bet: int = 0
 var is_folded: bool = false
 var is_all_in: bool = false
+var is_eliminated: bool = false
 var hole_cards: Array[Card] = []
 var hand_result: HandEvaluator.EvaluationResult = null
 

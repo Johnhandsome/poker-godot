@@ -2,46 +2,33 @@ class_name PhysicalChip
 extends RigidBody3D
 
 @export var denom_value: int = 10 
-@onready var audio_player: AudioStreamPlayer3D = $AudioStreamPlayer3D if has_node("AudioStreamPlayer3D") else null
 
 var is_settled: bool = false
 var time_settled: float = 0.0
 
 func _ready() -> void:
-	# Bật theo dõi điểm va chạm để phát ra âm thanh lạch cạch
-	contact_monitor = true
-	max_contacts_reported = 2
-	body_entered.connect(_on_body_entered)
+	max_contacts_reported = 0
+	contact_monitor = false
 	
-	mass = 0.04
-	linear_damp = 2.0    # Giảm tốc nhanh hơn
-	angular_damp = 3.0   # Hết quay nhanh hơn
+	mass = 0.05
+	linear_damp = 1.5     # Giảm tốc vừa phải — tự nhiên hơn
+	angular_damp = 2.0    # Cho phép lắc nhẹ khi chạm bàn
 	physics_material_override = PhysicsMaterial.new()
-	physics_material_override.friction = 0.8
-	physics_material_override.bounce = 0.08 # Gần như không nảy
+	physics_material_override.friction = 0.7
+	physics_material_override.bounce = 0.2  # Nảy nhẹ khi chạm bàn — tự nhiên
 
 func _physics_process(delta: float) -> void:
 	if is_settled:
 		return
-		
-	if linear_velocity.length() < 0.05 and angular_velocity.length() < 0.05:
+	
+	# Chờ chip nằm yên rồi mới freeze
+	if linear_velocity.length() < 0.08 and angular_velocity.length() < 0.08:
 		time_settled += delta
-		if time_settled > 0.3:
-			# Đông cứng hoàn toàn — không rung lắc nữa
+		if time_settled > 0.8:  # Chờ lâu hơn để animation landing hoàn tất
 			freeze = true
 			is_settled = true
 	else:
 		time_settled = 0.0
-
-func _on_body_entered(_body: Node) -> void:
-	if linear_velocity.length() > 0.5:
-		_play_clink_sound()
-
-func _play_clink_sound() -> void:
-	if audio_player and audio_player.stream:
-		# Thay đổi độ cao pitch một chút để các tiếng không giống y hệt nhau
-		audio_player.pitch_scale = randf_range(0.9, 1.1)
-		audio_player.play()
 
 func throw_towards(target_position: Vector3, throw_force: float = 3.0) -> void:
 	# Ném chip hướng về phía tâm bàn (pot) với một quỹ đạo vòng cung nhỏ
@@ -51,26 +38,29 @@ func throw_towards(target_position: Vector3, throw_force: float = 3.0) -> void:
 	
 	# Kèm xoay dọc trục y
 	apply_torque_impulse(Vector3(0, randf_range(-1, 1), 0))
+	
+	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if synth: synth.play_chip_clink()
 
 func set_value(val: int) -> void:
 	denom_value = val
-	var color = Color(0.8, 0.15, 0.15) # Default red ($10)
+	# Màu đậm hơn, giống chip casino thật
+	var color = Color(0.7, 0.08, 0.08) # Default red ($10)
 	if val >= 500:
-		color = Color(0.5, 0.15, 0.5) # Purple
+		color = Color(0.35, 0.05, 0.35) # Purple đậm
 	elif val >= 100:
-		color = Color(0.12, 0.12, 0.12) # Black
+		color = Color(0.08, 0.08, 0.08) # Black
 	elif val >= 50:
-		color = Color(0.12, 0.55, 0.2) # Green
+		color = Color(0.05, 0.40, 0.12) # Green đậm
 	elif val >= 25:
-		color = Color(0.12, 0.3, 0.75) # Blue
+		color = Color(0.08, 0.18, 0.55) # Blue đậm
 	
 	for child in get_children():
 		if child is MeshInstance3D and child.name == "MeshInstance3D":
 			var mat = StandardMaterial3D.new()
 			mat.albedo_color = color
-			mat.metallic = 0.3
-			mat.metallic_specular = 0.6
-			mat.roughness = 0.35
+			mat.metallic = 0.15
+			mat.roughness = 0.45
 			child.material_override = mat
 			break
 

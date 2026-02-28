@@ -1,5 +1,12 @@
-res://scripts/visual/physical_manager.gd
-res://scripts/main.gd
-res://scripts/visual/table_builder.gd
 res://scripts/physical/physical_card.gd
 res://scripts/physical/physical_chip.gd
+res://scripts/visual/physical_manager.gd
+res://scripts/main.gd
+res://scripts/core/audio_generator.gd
+res://scripts/core/game_manager.gd
+res://scripts/core/pot_manager.gd
+res://scripts/players/ai_bot.gd
+res://scenes/main.tscn
+res://scripts/players/player.gd
+res://scripts/ui/main_menu.gd
+res://scripts/visual/table_builder.gd

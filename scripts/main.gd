@@ -12,11 +12,27 @@ var btn_fold: Button
 var btn_call_check: Button
 var btn_raise: Button
 var btn_all_in: Button
-var raise_spinbox: SpinBox
+var raise_slider: HSlider
+var raise_value_label: Label
 var card_display: HBoxContainer  # 2D card display for human
 
 func _ready() -> void:
 	print("Poker Godot 3D - Bắt đầu khởi tạo...")
+	
+	# Khởi tạo âm thanh nền (Ambience)
+	var ambient_player = AudioStreamPlayer.new()
+	ambient_player.stream = preload("res://assets/audio/freesound_community-poker-room-33521.mp3")
+	ambient_player.volume_db = -8.0
+	ambient_player.finished.connect(func(): ambient_player.play())
+	add_child(ambient_player)
+	ambient_player.play()
+	
+	# Đặt lại hệ thống nếu đây là lần chơi mới từ Main Menu
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if gm:
+		gm.players.clear()
+		gm.active_players.clear()
+		gm.community_cards.clear()
 	
 	# 1. Khởi tạo và thêm TableBuilder (Xây dựng môi trường 3D)
 	var table_builder = TableBuilder.new()
@@ -25,6 +41,7 @@ func _ready() -> void:
 	
 	# 2. Khởi tạo và thêm PhysicalManager (Quản lý các mảnh ghép Bài, Chip)
 	var physical_manager = PhysicalManager.new()
+	
 	physical_manager.name = "PhysicalManager"
 	add_child(physical_manager)
 	
@@ -32,20 +49,21 @@ func _ready() -> void:
 	_setup_ui()
 	
 	# 4. Kết nối signal để cập nhật UI
-	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
 	if gm:
 		gm.state_changed.connect(_on_state_changed)
 		gm.action_received.connect(_on_action_received)
 		gm.player_turn_started.connect(_on_player_turn)
 		gm.community_cards_changed.connect(_on_community_changed)
+		gm.winners_declared.connect(func(_p, _b): _update_chips_label())
+		gm.game_over.connect(_on_game_over)
 	
 	# 5. Kết nối signal card_drawn của human player (chờ 1 frame)
 	await get_tree().process_frame
 	if gm:
 		for p in gm.players:
 			if !p.is_ai:
-				p.card_drawn.connect(_on_human_card_drawn)
-				break
+				p.card_drawn.connect(_on_human_cvar dealer_btn: MeshInstance3D)
 
 # ---- THEME COLORS (Dark Emerald + Gold) ----
 const THEME_BG_DARK = Color(0.06, 0.09, 0.07, 0.88)       # Nền tối xanh rêu đậm
@@ -63,6 +81,8 @@ const THEME_BTN_BORDER_RAISE = Color(0.90, 0.78, 0.20)     # Viền nút Raise
 const THEME_BTN_BORDER_ALLIN = Color(0.80, 0.40, 0.90)     # Viền nút All-in
 
 func _setup_ui() -> void:
+	# Khởi tạo UI	# _setup_table_layout()
+	
 	var canvas = CanvasLayer.new()
 	canvas.name = "GameUI"
 	add_child(canvas)
@@ -187,14 +207,28 @@ func _setup_ui() -> void:
 	btn_raise = _create_action_button("RAISE", THEME_BTN_BORDER_RAISE, "Raise")
 	bottom_hbox.add_child(btn_raise)
 	
-	raise_spinbox = SpinBox.new()
-	raise_spinbox.custom_minimum_size = Vector2(90, 40)
-	raise_spinbox.step = 10
-	raise_spinbox.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var sb_theme = Theme.new()
-	sb_theme.set_font_size("font_size", "LineEdit", 16)
-	raise_spinbox.theme = sb_theme
-	bottom_hbox.add_child(raise_spinbox)
+	# Raise slider + giá trị hiển thị
+	var raise_container = VBoxContainer.new()
+	raise_container.custom_minimum_size = Vector2(180, 50)
+	raise_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	bottom_hbox.add_child(raise_container)
+	
+	raise_value_label = Label.new()
+	raise_value_label.text = "$40"
+	raise_value_label.add_theme_font_size_override("font_size", 14)
+	raise_value_label.add_theme_color_override("font_color", THEME_GOLD)
+	raise_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	raise_container.add_child(raise_value_label)
+	
+	raise_slider = HSlider.new()
+	raise_slider.custom_minimum_size = Vector2(180, 20)
+	raise_slider.step = 10
+	raise_slider.min_value = 40
+	raise_slider.max_value = 1500
+	raise_slider.value = 40
+	raise_slider.value_changed.connect(_on_raise_slider_changed)
+	raise_slider.value_changed.connect(func(_val): _play_ui_sound())
+	raise_container.add_child(raise_slider)
 	
 	btn_all_in = _create_action_button("ALL-IN", THEME_BTN_BORDER_ALLIN, "AllIn")
 	bottom_hbox.add_child(btn_all_in)
@@ -206,55 +240,70 @@ func _add_action_button(parent: HBoxContainer, text: String, color: Color, actio
 func _create_action_button(text: String, accent_color: Color, action: String) -> Button:
 	var btn = Button.new()
 	btn.text = text
-	btn.custom_minimum_size = Vector2(100, 40)
+	btn.custom_minimum_size = Vector2(115, 46)
 	
-	# Normal: nền tối + viền accent
+	# Normal: nền tối sang trọng, viền dưới accent nổi bật
 	var style_normal = StyleBoxFlat.new()
-	style_normal.bg_color = THEME_BTN_BG
-	style_normal.corner_radius_top_left = 5
-	style_normal.corner_radius_top_right = 5
-	style_normal.corner_radius_bottom_left = 5
-	style_normal.corner_radius_bottom_right = 5
-	style_normal.border_width_top = 2
-	style_normal.border_width_bottom = 2
-	style_normal.border_width_left = 2
-	style_normal.border_width_right = 2
-	style_normal.border_color = accent_color
+	style_normal.bg_color = Color(0.08, 0.10, 0.09, 0.95)
+	style_normal.corner_radius_top_left = 8
+	style_normal.corner_radius_top_right = 8
+	style_normal.corner_radius_bottom_left = 8
+	style_normal.corner_radius_bottom_right = 8
+	style_normal.border_width_top = 1
+	style_normal.border_width_bottom = 3  # Viền dưới dày — điểm nhấn
+	style_normal.border_width_left = 1
+	style_normal.border_width_right = 1
+	style_normal.border_color = accent_color.darkened(0.2)
+	style_normal.shadow_color = Color(0, 0, 0, 0.3)
+	style_normal.shadow_size = 2
+	style_normal.shadow_offset = Vector2(0, 1)
 	btn.add_theme_stylebox_override("normal", style_normal)
 	
-	# Hover: nền sáng hơn một tí
+	# Hover: sáng lên thanh lịch
 	var style_hover = StyleBoxFlat.new()
-	style_hover.bg_color = THEME_BTN_BG.lightened(0.15)
-	style_hover.corner_radius_top_left = 5
-	style_hover.corner_radius_top_right = 5
-	style_hover.corner_radius_bottom_left = 5
-	style_hover.corner_radius_bottom_right = 5
-	style_hover.border_width_top = 2
-	style_hover.border_width_bottom = 2
-	style_hover.border_width_left = 2
-	style_hover.border_width_right = 2
-	style_hover.border_color = accent_color.lightened(0.2)
+	style_hover.bg_color = Color(0.12, 0.16, 0.13, 0.98)
+	style_hover.corner_radius_top_left = 8
+	style_hover.corner_radius_top_right = 8
+	style_hover.corner_radius_bottom_left = 8
+	style_hover.corner_radius_bottom_right = 8
+	style_hover.border_width_top = 1
+	style_hover.border_width_bottom = 3
+	style_hover.border_width_left = 1
+	style_hover.border_width_right = 1
+	style_hover.border_color = accent_color
+	style_hover.shadow_color = Color(0, 0, 0, 0.4)
+	style_hover.shadow_size = 3
+	style_hover.shadow_offset = Vector2(0, 2)
 	btn.add_theme_stylebox_override("hover", style_hover)
 	
-	# Pressed: nền accent đậm
+	# Pressed: chìm xuống
 	var style_pressed = StyleBoxFlat.new()
-	style_pressed.bg_color = accent_color.darkened(0.5)
-	style_pressed.corner_radius_top_left = 5
-	style_pressed.corner_radius_top_right = 5
-	style_pressed.corner_radius_bottom_left = 5
-	style_pressed.corner_radius_bottom_right = 5
+	style_pressed.bg_color = accent_color.darkened(0.6)
+	style_pressed.corner_radius_top_left = 8
+	style_pressed.corner_radius_top_right = 8
+	style_pressed.corner_radius_bottom_left = 8
+	style_pressed.corner_radius_bottom_right = 8
 	style_pressed.border_width_top = 2
-	style_pressed.border_width_bottom = 2
-	style_pressed.border_width_left = 2
-	style_pressed.border_width_right = 2
-	style_pressed.border_color = accent_color
+	style_pressed.border_width_bottom = 1  # Ngược lại — tạo hiệu ứng nhấn
+	style_pressed.border_width_left = 1
+	style_pressed.border_width_right = 1
+	style_pressed.border_color = accent_color.darkened(0.1)
 	btn.add_theme_stylebox_override("pressed", style_pressed)
 	
-	btn.add_theme_font_size_override("font_size", 15)
-	btn.add_theme_color_override("font_color", accent_color.lightened(0.3))
+	btn.add_theme_font_size_override("font_size", 16)
+	# Text màu kem sang trọng, không chói
+	btn.add_theme_color_override("font_color", Color(0.92, 0.88, 0.80))
 	
-	btn.pressed.connect(func(): _on_ui_action_pressed(action))
+	btn.pressed.connect(func():
+		_play_ui_sound()
+		_on_ui_action_pressed(action)
+	)
 	return btn
+
+func _play_ui_sound() -> void:
+	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if synth:
+		synth.play_ui_click()
 
 func _on_ui_action_pressed(action_type: String) -> void:
 	# Lấy node Human
@@ -273,8 +322,14 @@ func _on_ui_action_pressed(action_type: String) -> void:
 	
 	match action_type:
 		"Fold": human.receive_ui_input(GameManager.PlayerAction.FOLD, 0)
-		"Call": human.receive_ui_input(GameManager.PlayerAction.CALL, 0)
-		"Raise": human.receive_ui_input(GameManager.PlayerAction.RAISE, int(raise_spinbox.value))
+		"Call":
+			# Phân biệt CHECK vs CALL dựa trên amount_to_call
+			var amount_to_call = game_manager.current_bet - human.current_bet
+			if amount_to_call > 0:
+				human.receive_ui_input(GameManager.PlayerAction.CALL, 0)
+			else:
+				human.receive_ui_input(GameManager.PlayerAction.CHECK, 0)
+		"Raise": human.receive_ui_input(GameManager.PlayerAction.RAISE, int(raise_slider.value))
 		"AllIn": human.receive_ui_input(GameManager.PlayerAction.ALL_IN, human.chips)
 		
 	# Bấm xong là disable luôn tới turn tiếp theo
@@ -285,7 +340,11 @@ func _set_action_buttons_disabled(disabled: bool) -> void:
 	if btn_call_check: btn_call_check.disabled = disabled
 	if btn_raise: btn_raise.disabled = disabled
 	if btn_all_in: btn_all_in.disabled = disabled
-	if raise_spinbox: raise_spinbox.editable = !disabled
+	if raise_slider: raise_slider.editable = !disabled
+
+func _on_raise_slider_changed(value: float) -> void:
+	if raise_value_label:
+		raise_value_label.text = "$" + str(int(value))
 
 # ---- UI UPDATE CALLBACKS ----
 
@@ -363,14 +422,16 @@ func _on_player_turn(player_id: String) -> void:
 					else:
 						btn_call_check.text = "CHECK"
 				
-				# Cập nhật nút Raise và SpinBox
-				if btn_raise and raise_spinbox:
+				# Cập nhật Raise slider
+				if btn_raise and raise_slider:
 					var min_r = gm.current_bet + gm.min_raise
-					# Nếu tiền mình có không đủ min_raise thì cap lại ở max
-					raise_spinbox.max_value = p.chips + p.current_bet
-					raise_spinbox.min_value = min(min_r, raise_spinbox.max_value)
-					raise_spinbox.value = raise_spinbox.min_value
+					raise_slider.max_value = p.chips + p.current_bet
+					raise_slider.min_value = min(min_r, raise_slider.max_value)
+					raise_slider.step = gm.big_blind # Stepping theo BB cho tròn số
+					raise_slider.value = raise_slider.min_value
 					btn_raise.text = "RAISE"
+					if raise_value_label:
+						raise_value_label.text = "$" + str(int(raise_slider.value))
 
 func _on_community_changed(_cards: Array) -> void:
 	_update_chips_label()
@@ -402,3 +463,42 @@ func _clear_card_display() -> void:
 		return
 	for child in card_display.get_children():
 		child.queue_free()
+
+func _on_game_over(human_won: bool) -> void:
+	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if human_won and synth:
+		synth.play_win()
+
+	var popup_bg = ColorRect.new()
+	popup_bg.color = Color(0, 0, 0, 0.85)
+	popup_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(popup_bg)
+	
+	var vbox = VBoxContainer.new()
+	vbox.set_anchors_preset(Control.PRESET_CENTER)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 30)
+	popup_bg.add_child(vbox)
+	
+	var lbl = Label.new()
+	lbl.text = "YOU WIN!\nCHAMPION" if human_won else "BANKRUPT\nGAME OVER"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 64)
+	lbl.add_theme_color_override("font_color", THEME_GOLD if human_won else Color(1.0, 0.3, 0.3))
+	vbox.add_child(lbl)
+	
+	var btn = Button.new()
+	btn.text = "Main Menu"
+	btn.custom_minimum_size = Vector2(250, 60)
+	btn.add_theme_font_size_override("font_size", 24)
+	var style = StyleBoxFlat.new()
+	style.bg_color = THEME_BG_DARK
+	style.border_width_bottom = 4
+	style.border_color = THEME_GOLD
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	btn.add_theme_stylebox_override("normal", style)
+	btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/MainMenu.tscn"))
+	vbox.add_child(btn)
