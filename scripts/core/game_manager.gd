@@ -236,7 +236,14 @@ func _next_player_turn():
 	var current_p_id = active_players[current_player_index]
 	var current_p = _get_player_by_id(current_p_id)
 	
+	var loop_safety = 0
 	while current_p.is_all_in or current_p.is_folded or current_p.chips == 0:
+		loop_safety += 1
+		if loop_safety > active_players.size() + 2:
+			print("Safety break triggered in turn loop")
+			_end_betting_round()
+			return
+
 		current_player_index = (current_player_index + 1) % active_players.size()
 		if current_player_index == last_aggressor_index:
 			# Round is over!
@@ -405,8 +412,13 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 				return
 				
 		PlayerAction.CHECK:
-			var amount_to_check = min(current_bet - p.current_bet, p.chips)
-			_process_bet(p, amount_to_check) 
+			var amount_to_call = current_bet - p.current_bet
+			if amount_to_call > 0:
+				# Cannot check if there is a bet to call. Force Fold or handle as error.
+				# For robustness, we'll treat it as a fold if logic fails, but UI should prevent this.
+				p.is_folded = true
+			else:
+				_process_bet(p, 0)
 			
 		PlayerAction.CALL:
 			var amount_to_call = current_bet - p.current_bet

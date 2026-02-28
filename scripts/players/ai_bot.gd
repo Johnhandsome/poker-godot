@@ -205,18 +205,33 @@ func _evaluate_hand_strength(community_cards: Array[Card]) -> float:
 			HandEvaluator.HandRank.THREE_OF_A_KIND: return 0.70
 			HandEvaluator.HandRank.TWO_PAIR: return 0.55
 			HandEvaluator.HandRank.PAIR: 
-				# Nút Top Pair mạnh hơn Bottom Pair
-				var top_table = 0
+				# Phân loại Pair: Overpair > Top Pair > Middle/Bottom Pair
+				var pair_rank = result.kickers[0] # Trong HandEvaluator, kickers[0] của PAIR là giá trị đôi
+				
+				# Tìm lá lớn nhất trên bàn
+				var max_board_rank = 0
 				for c in community_cards:
-					if c.get_value() > top_table: top_table = c.get_value()
-				if c1 == top_table or c2 == top_table:
-					return 0.45 # Top Pair
-				return 0.30 # Bottom/Middle pair
+					if c.get_value() > max_board_rank:
+						max_board_rank = c.get_value()
+				
+				if pair_rank > max_board_rank:
+					return 0.65 # Overpair (VD: Cầm KK trên bàn 2-5-9) -> Rất mạnh
+				elif pair_rank == max_board_rank:
+					return 0.50 # Top Pair -> Khá
+				else:
+					return 0.30 # Middle/Bottom pair -> Yếu
+					
 			HandEvaluator.HandRank.HIGH_CARD: 
-				# Draw potential (Sảnh chờ / Thùng chờ) cho Flop/Turn
+				# Nếu chưa ra hết bài (Flop/Turn), cân nhắc Draw (mua bán)
 				if community_cards.size() < 5:
-					# Tăng winrate ảo lên 35% để Bot chịu Call các bet nhỏ đuổi sảnh/thùng thay vì luôn Fold
-					return 0.35 
-				return 0.0
+					# Đơn giản hóa: Có 2 lá to (J+) thì vẫn nuôi hy vọng
+					if c1 >= 11 and c2 >= 11:
+						return 0.35
+					return 0.20 
+				else:
+					# River: High Card thường là thua, trừ khi Ace High heads-up
+					if max(c1, c2) == 14: # Ace High
+						return 0.15
+					return 0.05
 				
 	return 0.0
