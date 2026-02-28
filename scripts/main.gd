@@ -70,6 +70,8 @@ func _ready() -> void:
 	
 	# 5. Kết nối signal card_drawn của human player (chờ 1 frame)
 	await get_tree().process_frame
+	if not is_instance_valid(self): return
+	
 	if gm:
 		if gm.multiplayer_mode:
 			var my_id = str(multiplayer.get_unique_id())

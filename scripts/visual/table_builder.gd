@@ -301,12 +301,13 @@ func _setup_players() -> void:
 			seat_positions.append(pos)
 			
 			# Khởi tạo Player Node
+			var human_chips = 5000
+			var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
+			if sm:
+				human_chips = sm.get_chips()
+			
 			var player_node: Player
 			if i == 0:
-				var human_chips = 5000
-				var sm = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
-				if sm:
-					human_chips = sm.get_chips()
 				player_node = HumanPlayer.new("You", human_chips)
 				player_node.name = "HumanPlayer"
 			else:

@@ -584,15 +584,18 @@ func _show_multiplayer_panel() -> void:
 	
 	# Store signal callables so we can disconnect them on close
 	var _on_player_connected = func(id, info):
+		if not is_instance_valid(player_list) or not is_instance_valid(status_lbl): return
 		player_list.add_item(str(id) + ": " + info.get("name", "Unknown"))
 		status_lbl.text = "Player Connected: " + str(id)
 	
 	var _on_connection_failed = func():
+		if not is_instance_valid(status_lbl) or not is_instance_valid(btn_host): return
 		status_lbl.text = "Connection Failed!"
 		btn_host.disabled = false
 		btn_join.disabled = false
 	
 	var _on_server_disconnected = func():
+		if not is_instance_valid(status_lbl) or not is_instance_valid(player_list): return
 		status_lbl.text = "Server Disconnected"
 		player_list.clear()
 		btn_host.disabled = false
@@ -600,6 +603,7 @@ func _show_multiplayer_panel() -> void:
 		btn_start.visible = false
 	
 	btn_host.pressed.connect(func():
+		if not is_instance_valid(status_lbl): return
 		status_lbl.text = "Hosting..."
 		nm.host_game(name_edit.text)
 		btn_host.disabled = true
@@ -609,6 +613,7 @@ func _show_multiplayer_panel() -> void:
 	)
 	
 	btn_join.pressed.connect(func():
+		if not is_instance_valid(status_lbl): return
 		status_lbl.text = "Connecting..."
 		nm.join_game(ip_edit.text, name_edit.text)
 		btn_host.disabled = true
@@ -620,15 +625,18 @@ func _show_multiplayer_panel() -> void:
 	)
 	
 	btn_close.pressed.connect(func():
-		# Disconnect network signals to avoid leaks
+		overlay.queue_free()
+		multiplayer.multiplayer_peer = null # Disconnect
+	)
+	
+	# Robust cleanup when the panel is freed for any reason
+	overlay.tree_exiting.connect(func():
 		if nm.player_connected.is_connected(_on_player_connected):
 			nm.player_connected.disconnect(_on_player_connected)
 		if nm.connection_failed.is_connected(_on_connection_failed):
 			nm.connection_failed.disconnect(_on_connection_failed)
 		if nm.server_disconnected.is_connected(_on_server_disconnected):
 			nm.server_disconnected.disconnect(_on_server_disconnected)
-		overlay.queue_free()
-		multiplayer.multiplayer_peer = null # Disconnect
 	)
 	
 	# Network signals

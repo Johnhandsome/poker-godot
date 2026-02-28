@@ -310,15 +310,10 @@ func notify_card_dealt(p_id: String):
 		var dummy = Card.new(Card.Suit.SPADES, Card.Rank.TWO)
 		p.draw_card(dummy)
 
-@rpc("authority", "call_local", "reliable")
+@rpc("authority", "call_remote", "reliable")
 func sync_hole_card(suit: int, rank: int):
-	# Receive private hole card data
+	# Receive private hole card data (only runs on the targeted remote client)
 	var my_id = str(multiplayer.get_unique_id())
-	# If this RPC is for me, update my last card
-	# But wait, the RPC is targeted to peer_id.
-	# So whoever receives this IS the owner.
-	
-	# Find my player object
 	var p = _get_player_by_id(my_id)
 	if p and p.hole_cards.size() > 0:
 		var last_card = p.hole_cards.back()

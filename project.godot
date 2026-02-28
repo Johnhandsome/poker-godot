@@ -25,8 +25,6 @@ SettingsManager="*res://scripts/core/settings_manager.gd"
 GameManager="*res://scripts/core/game_manager.gd"
 
 [display]
-window/per_pixel_transparency/allowed=false
-window/subwindows/embed_subwindows=true
 
 window/size/viewport_width=1280
 window/size/viewport_height=720

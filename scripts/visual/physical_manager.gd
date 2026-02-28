@@ -62,6 +62,10 @@ func _ready() -> void:
 		for p in game_manager.players:
 			p.card_drawn.connect(_on_player_drew_card.bind(p))
 			
+			# Lắng nghe cập nhật bài (multiplayer: guest nhận bài thật sau dummy)
+			if p.has_signal("card_updated"):
+				p.card_updated.connect(_on_player_card_updated.bind(p))
+			
 			# Nếu là AI hoặc Human, lắng nghe hành động quăng chip vật lý
 			if p.has_signal("physical_action_performed"):
 				p.physical_action_performed.connect(_on_physical_action.bind(p))
@@ -197,6 +201,18 @@ func _build_chip_prefab() -> PackedScene:
 	return ds
 
 # ---- EVENT HANDLERS ----
+
+func _on_player_card_updated(card: Card, player: Player) -> void:
+	# Multiplayer: guest receives real card data after initial dummy was dealt.
+	# Refresh the 3D physical card texture to show the real card.
+	if not _player_cards.has(player.id):
+		return
+	for p_card in _player_cards[player.id]:
+		if p_card.card_data == card:
+			p_card.set_card_data(card)
+			if p_card.is_face_up:
+				p_card._update_visuals()
+			break
 
 func _on_player_drew_card(card: Card, player: Player) -> void:
 	var p_card = card_scene.instantiate() as PhysicalCard
