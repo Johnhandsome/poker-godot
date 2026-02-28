@@ -264,11 +264,16 @@ func _next_player_turn():
 
 func _end_betting_round():
 	var unfolded_players = []
+	var all_in_players = []
+	
 	for p_id in active_players:
-		if not _get_player_by_id(p_id).is_folded:
+		var p = _get_player_by_id(p_id)
+		if not p.is_folded:
 			unfolded_players.append(p_id)
+		if p.is_all_in:
+			all_in_players.append(p_id)
 			
-	pot_manager.gather_bets(unfolded_players)
+	pot_manager.gather_bets(unfolded_players, all_in_players)
 	emit_signal("betting_round_ended")
 	current_bet = 0
 	min_raise = big_blind
