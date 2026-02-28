@@ -193,7 +193,10 @@ func _ready() -> void:
 	)
 	btn_quit.pivot_offset = btn_quit.custom_minimum_size / 2.0
 	
-	vbox.add_child(btn_quit)
+	if OS.has_feature("web"):
+		btn_quit.hide()
+	else:
+		vbox.add_child(btn_quit)
 
 func _show_settings_panel() -> void:
 	if has_node("SettingsPanel"): return
