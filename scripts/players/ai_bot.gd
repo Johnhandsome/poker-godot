@@ -131,13 +131,13 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 	physical_action_performed.emit(chosen_action, chosen_amount, throw_force)
 	
 	# --- BANTER CHATTER LOGIC ---
-	_emit_chatter(chosen_action, amount_to_call, chosen_amount)
+	_emit_chatter(game_manager, chosen_action, amount_to_call, chosen_amount)
 	
 	# Trả về kết quả cho Logic Core
 	if game_manager:
 		game_manager.process_player_action(id, chosen_action, chosen_amount)
 
-func _emit_chatter(action: int, amount_to_call: int, raise_amount: int) -> void:
+func _emit_chatter(game_manager: Node, action: int, amount_to_call: int, raise_amount: int) -> void:
 	# Only chat 15% of the time to avoid spam
 	if randf() > 0.15: return
 	
