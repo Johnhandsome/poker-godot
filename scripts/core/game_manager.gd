@@ -229,7 +229,12 @@ func _next_player_turn():
 	current_p.request_action(current_bet, min_raise)
 
 func _end_betting_round():
-	pot_manager.gather_bets(active_players)
+	var unfolded_players = []
+	for p_id in active_players:
+		if not _get_player_by_id(p_id).is_folded:
+			unfolded_players.append(p_id)
+			
+	pot_manager.gather_bets(unfolded_players)
 	emit_signal("betting_round_ended")
 	current_bet = 0
 	min_raise = big_blind

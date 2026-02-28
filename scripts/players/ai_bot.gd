@@ -174,8 +174,8 @@ func _evaluate_hand_strength(community_cards: Array[Card]) -> float:
 			HandEvaluator.HandRank.HIGH_CARD: 
 				# Draw potential (Sảnh chờ / Thùng chờ) cho Flop/Turn
 				if community_cards.size() < 5:
-					# Bot có thể Call nhẹ để đuổi sảnh/thùng, mô phỏng sơ cua 10-15% winrate
-					return 0.15 
+					# Tăng winrate ảo lên 35% để Bot chịu Call các bet nhỏ đuổi sảnh/thùng thay vì luôn Fold
+					return 0.35 
 				return 0.0
 				
 	return 0.0

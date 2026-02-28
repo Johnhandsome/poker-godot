@@ -47,14 +47,12 @@ func gather_bets(active_players: Array):
 		for player_id in active_bets.keys():
 			if active_bets[player_id] >= bet:
 				pot_addition += amount_to_deduct
-				# Chỉ người chưa fold mới có quyền thắng số tiền này
-				if active_players.has(player_id) and not _is_player_folded(active_players, player_id):
+				if active_players.has(player_id):
 					eligible.append(player_id)
 			elif active_bets[player_id] > last_deducted:
-				# Should not happen if unique_bets is correctly populated and sorted
 				var diff = active_bets[player_id] - last_deducted
 				pot_addition += diff
-				if active_players.has(player_id) and not _is_player_folded(active_players, player_id):
+				if active_players.has(player_id):
 					eligible.append(player_id)
 					
 		# Add to the current pot
@@ -119,23 +117,4 @@ func distribute_pots(player_results: Dictionary) -> Dictionary:
 					
 	return payouts
 
-# Hàm xử lý check xem player có bị fold hay không từ active_players (vì active_players lưu string ID)
-# Cần reference Game Manager hoặc truyền vào mảng các player chưa fold.
-# Do gather_bets được truyền active_players (mảng String ID) từ GameManager,
-# nên ta sẽ truyền thêm một điều kiện hoặc lấy trực tiếp GameManager singleton.
-func _is_player_folded(_active_players_list: Array, pid: String) -> bool:
-	if Engine.has_singleton("GameManager"):
-		var gm = Engine.get_singleton("GameManager")
-		if gm.has_method("_get_player_by_id"):
-			var p = gm._get_player_by_id(pid)
-			if p: return p.is_folded
-			
-	# Nếu gọi cách khác (fallback via tree node)
-	var scene_tree = Engine.get_main_loop() as SceneTree
-	if scene_tree:
-		var gm = scene_tree.root.get_node_or_null("GameManager")
-		if gm and gm.has_method("_get_player_by_id"):
-			var p = gm._get_player_by_id(pid)
-			if p: return p.is_folded
-			
-	return false
+# _is_player_folded method removed, trusting GameManager to array filter on active_players

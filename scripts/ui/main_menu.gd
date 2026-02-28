@@ -38,6 +38,7 @@ func _ready() -> void:
 	}
 	"""
 	var shader = Shader.new()
+	shader.code = shader_code
 	mat.shader = shader
 	glow.material = mat
 	

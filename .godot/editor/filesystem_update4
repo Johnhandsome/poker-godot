@@ -12,3 +12,4 @@ res://scripts/ui/main_menu.gd
 res://scripts/visual/table_builder.gd
 res://scripts/core/audio_synthesizer.gd
 res://scripts/core/settings_manager.gd
+res://scripts/core/hand_evaluator.gd

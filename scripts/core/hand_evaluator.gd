@@ -147,9 +147,11 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 		result.rank = HandRank.TWO_PAIR
 		result.kickers.append(pairs[0])
 		result.kickers.append(pairs[1])
+		# Find the best 5th card that is NOT part of the two pairs
 		for card in all_cards:
-			if card.get_value() != pairs[0] and card.get_value() != pairs[1]:
-				result.kickers.append(card.get_value())
+			var val = card.get_value()
+			if val != pairs[0] and val != pairs[1]:
+				result.kickers.append(val)
 				break
 		return result
 		
@@ -184,7 +186,10 @@ static func _get_flush_cards(cards: Array[Card]) -> Array[Card]:
 	for suit in suit_buckets:
 		if suit_buckets[suit].size() >= 5:
 			var result: Array[Card] = []
-			result.assign(suit_buckets[suit])
+			for c in suit_buckets[suit]:
+				result.append(c as Card)
+			# Sort by value DESC
+			result.sort_custom(Callable(HandEvaluator, "_sort_card_descending"))
 			return result
 	var empty: Array[Card] = []
 	return empty
