@@ -146,7 +146,7 @@ func _setup_ui() -> void:
 	
 	# Blinds level info
 	blinds_label = Label.new()
-	blinds_label.text = SettingsManager.tc("BLINDS: 10/20 (Lvl 1)", "BLINDS: 10/20 (Lvl 1)")
+	blinds_label.text = _tc("BLINDS: 10/20 (Lvl 1)", "BLINDS: 10/20 (Lvl 1)")
 	blinds_label.add_theme_font_size_override("font_size", 16)
 	blinds_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4)) # Reddish to show pressure
 	top_hbox.add_child(blinds_label)
@@ -593,10 +593,10 @@ func _on_state_changed(new_state: int, _old_state: int) -> void:
 			or new_state == GameManager.GameState.FLOP_BETTING \
 			or new_state == GameManager.GameState.TURN_BETTING \
 			or new_state == GameManager.GameState.RIVER_BETTING:
-		var txt = SettingsManager.tc("--- Betting Round: ", "--- Vòng Cược: ")
+		var txt = _tc("--- Betting Round: ", "--- Vòng Cược: ")
 		_add_log_message("[color=#66ccff]" + txt + state_label.text + " ---[/color]", true)
 	elif new_state == GameManager.GameState.SHOWDOWN:
-		var txt = SettingsManager.tc("--- Showdown ---", "--- Lật Bài (Showdown) ---")
+		var txt = _tc("--- Showdown ---", "--- Lật Bài (Showdown) ---")
 		_add_log_message("[color=#ffcc66]" + txt + "[/color]", true)
 		
 	# Update trạng thái disable của nút khi chuyển state mới mà không phải lượt đánh	
@@ -624,14 +624,14 @@ func _on_action_received(player_id: String, action: int, amount: int) -> void:
 	_update_chips_label()
 	
 	var action_str = ""
-	var p_color = "yellow" if player_id == SettingsManager.tc("You", "Bạn") or player_id == "You" else "lightblue"
+	var p_color = "yellow" if player_id == _tc("You", "Bạn") or player_id == "You" else "lightblue"
 	
 	match action:
-		GameManager.PlayerAction.FOLD: action_str = SettingsManager.tc("[color=red]folded[/color]", "[color=red]vừa úp bài (Fold)[/color]")
-		GameManager.PlayerAction.CHECK: action_str = SettingsManager.tc("[color=gray]checked[/color]", "[color=gray]vừa Check[/color]")
-		GameManager.PlayerAction.CALL: action_str = SettingsManager.tc("[color=lightgreen]called[/color]", "[color=lightgreen]vừa theo (Call)[/color]")
-		GameManager.PlayerAction.RAISE: action_str = SettingsManager.tc("[color=orange]raised ($" + str(amount) + ")[/color]", "[color=orange]vừa Raise ($" + str(amount) + ")[/color]")
-		GameManager.PlayerAction.ALL_IN: action_str = SettingsManager.tc("[color=magenta]went ALL-IN ($" + str(amount) + ")[/color]", "[color=magenta]vừa ALL-IN ($" + str(amount) + ")[/color]")
+		GameManager.PlayerAction.FOLD: action_str = _tc("[color=red]folded[/color]", "[color=red]vừa úp bài (Fold)[/color]")
+		GameManager.PlayerAction.CHECK: action_str = _tc("[color=gray]checked[/color]", "[color=gray]vừa Check[/color]")
+		GameManager.PlayerAction.CALL: action_str = _tc("[color=lightgreen]called[/color]", "[color=lightgreen]vừa theo (Call)[/color]")
+		GameManager.PlayerAction.RAISE: action_str = _tc("[color=orange]raised ($" + str(amount) + ")[/color]", "[color=orange]vừa Raise ($" + str(amount) + ")[/color]")
+		GameManager.PlayerAction.ALL_IN: action_str = _tc("[color=magenta]went ALL-IN ($" + str(amount) + ")[/color]", "[color=magenta]vừa ALL-IN ($" + str(amount) + ")[/color]")
 		
 	_add_log_message("[color=" + p_color + "]" + player_id + "[/color] " + action_str)
 
@@ -643,12 +643,12 @@ func _on_player_turn(player_id: String) -> void:
 		var p = gm._get_player_by_id(player_id)
 		if p:
 			if p.is_ai:
-				var t1 = SettingsManager.tc("Turn: ", "Lượt: ")
-				var t2 = SettingsManager.tc(" (thinking...)", " (đang nghĩ...)")
+				var t1 = _tc("Turn: ", "Lượt: ")
+				var t2 = _tc(" (thinking...)", " (đang nghĩ...)")
 				turn_label.text = t1 + p.id + t2
 				turn_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
 			else:
-				turn_label.text = SettingsManager.tc(">>> YOUR TURN <<<", ">>> LƯỢT CỦA BẠN <<<")
+				turn_label.text = _tc(">>> YOUR TURN <<<", ">>> LƯỢT CỦA BẠN <<<")
 				turn_label.add_theme_color_override("font_color", Color(1.0, 1.0, 0.3))
 				
 				# Mở khóa các nút
@@ -658,10 +658,23 @@ func _on_player_turn(player_id: String) -> void:
 				var amount_to_call = gm.current_bet - p.current_bet
 				if btn_call_check:
 					if amount_to_call > 0:
-						btn_call_check.text = "CALL $" + str(amount_to_call)
+						if amount_to_call >= p.chips:
+							btn_call_check.text = "CALL ALL-IN"
+						else:
+							btn_call_check.text = "CALL $" + str(amount_to_call)
+						# Check button styles for urgency?
+						btn_call_check.modulate = Color(1.0, 0.8, 0.8) # Reddish tint for paying
 					else:
 						btn_call_check.text = "CHECK"
+						btn_call_check.modulate = Color.WHITE
 				
+				# Cập nhật nút Raise
+				if btn_raise:
+					if p.chips <= amount_to_call:
+						btn_raise.disabled = true # Cannot raise if you don't have enough to call/raise
+					else:
+						btn_raise.disabled = false
+
 				# Cập nhật Raise slider
 				if btn_raise and raise_slider:
 					var min_r = gm.current_bet + gm.min_raise
@@ -694,6 +707,31 @@ func _on_winners_declared_ui(payouts: Dictionary, _best_cards: Dictionary) -> vo
 		if amt > 0:
 			var p_color = "yellow" if pid == "You" else "lightblue"
 			_add_log_message("[color=" + p_color + "]" + pid + "[/color] thắng [color=gold]$" + str(amt) + "[/color]!")
+			
+			if pid == "You":
+				# Celebration Effect
+				var win_lbl = Label.new()
+				win_lbl.text = "YOU WON $" + str(amt)
+				win_lbl.add_theme_font_size_override("font_size", 48)
+				win_lbl.add_theme_color_override("font_color", THEME_GOLD)
+				win_lbl.add_theme_color_override("font_outline_color", Color.BLACK)
+				win_lbl.add_theme_constant_override("outline_size", 8)
+				win_lbl.set_anchors_preset(Control.PRESET_CENTER)
+				get_node("GameUI").add_child(win_lbl)
+				
+				# Animate
+				win_lbl.scale = Vector2.ZERO
+				var tw = create_tween()
+				tw.tween_property(win_lbl, "scale", Vector2(1.2, 1.2), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				tw.tween_property(win_lbl, "scale", Vector2(1.0, 1.0), 0.2)
+				tw.tween_interval(1.5)
+				tw.tween_property(win_lbl, "modulate:a", 0.0, 0.5)
+				tw.tween_callback(win_lbl.queue_free)
+				
+				# Sound
+				var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+				if synth and synth.has_method("play_ui_click"): # Or play_win if exists
+					synth.play_ui_click() # Placeholder for cash sound
 
 func _on_human_card_drawn(card: Card) -> void:
 	if not card_display:
@@ -990,3 +1028,9 @@ func _show_settings_panel() -> void:
 	panel.pivot_offset = Vector2(250, 200) # center pivot for PanelContainer
 	var tw = create_tween()
 	tw.tween_property(panel, "scale", Vector2(1.0, 1.0), 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _tc(en: String, vi: String) -> String:
+	var sm = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	if sm and sm.has_method("tc"):
+		return sm.tc(en, vi)
+	return en

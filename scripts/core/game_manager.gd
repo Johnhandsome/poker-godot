@@ -328,8 +328,8 @@ func _deal_community_cards_async(count: int):
 	for _i in range(count):
 		community_cards.append(deck.deal())
 		emit_signal("community_cards_changed", community_cards)
-		await get_tree().create_timer(0.15).timeout # Delay từng lá community nhanh hơn
-	await get_tree().create_timer(0.2).timeout
+		await get_tree().create_timer(0.08).timeout # Faster dealing
+	await get_tree().create_timer(0.15).timeout
 
 func _handle_showdown():
 	var player_results = {}
@@ -378,8 +378,8 @@ func _handle_showdown():
 		
 	_change_state(GameState.ROUND_END)
 	
-	# Auto-start round mới sau 4 giây bằng Callable (tránh lỗi Lambda capture freed)
-	get_tree().create_timer(4.0).timeout.connect(Callable(self, "_start_new_round"))
+	# Auto-start round mới sau 2.5 giây bằng Callable (tránh lỗi Lambda capture freed)
+	get_tree().create_timer(2.5).timeout.connect(Callable(self, "_start_new_round"))
 
 # Lưu dữ liệu người chơi thật vào cuối ván
 func _save_human_progress() -> void:

@@ -20,7 +20,7 @@ func request_action(current_table_bet: int, min_raise: int) -> void:
 	
 	# 1. "Có hồn" - Delay suy nghĩ: 
 	# AI sẽ vờ như đang suy nghĩ. Thời gian nghĩ phụ thuộc vào độ khó của quyết định.
-	var base_think_time = randf_range(1.5, 3.5)
+	var base_think_time = randf_range(0.8, 1.5) # Reduced default time for better pacing
 	
 	# VD: Nếu số tiền cược bàn rất lớn so với tiền mình đang có, thời gian suy nghĩ lâu hơn
 	var bet_ratio = float(current_table_bet) / max(1.0, float(chips + current_bet))
