@@ -211,8 +211,13 @@ func _on_player_drew_card(card: Card, player: Player) -> void:
 	var offset_x = (card_index - 0.5) * 0.7 # Khoảng cách rộng hơn cho bài to
 	var offset_y = 0.02 + card_index * 0.003 # Sát mặt bàn
 	
-	if !player.is_ai:
-		# HUMAN: Đặt bài tĩnh, ngửa, trước mặt (BoxMesh đã nằm ngang sẵn)
+	# Determine if this player is "Me" (Local User)
+	var is_me = (player.id == "You") 
+	if multiplayer.has_multiplayer_peer():
+		is_me = (player.id == str(multiplayer.get_unique_id()))
+	
+	if is_me:
+		# MY CARDS: Đặt bài tĩnh, ngửa, ngay trước camera
 		p_card.is_face_up = true
 		p_card._update_visuals()
 		
@@ -222,7 +227,10 @@ func _on_player_drew_card(card: Card, player: Player) -> void:
 		p_card.rotation_degrees = Vector3(-90, 0, 0) # Nằm ngang phẳng xuống bàn
 		p_card.freeze = true
 	else:
-		# AI: Xếp bài ngay ngắn thay vì vứt lung tung
+		# OTHERS (Bots or Remote Humans): Face Down
+		p_card.is_face_up = false # Always face down for others
+		p_card._update_visuals()
+		
 		p_card.global_position = dealer_pos
 		
 		# Tính hướng từ tâm bàn đến người chơi
@@ -233,7 +241,7 @@ func _on_player_drew_card(card: Card, player: Player) -> void:
 		var angle_y = atan2(dir_to_center.x, dir_to_center.z)
 		p_card.rotation = Vector3(deg_to_rad(-90), angle_y, 0)
 		
-		# Vị trí đích ngay ngắn trước mặt bot
+		# Vị trí đích ngay ngắn trước mặt họ
 		var right_dir = Vector3(dir_to_center.z, 0, -dir_to_center.x)
 		var target_pos = player.seat_position + dir_to_center * 0.2 + right_dir * offset_x
 		target_pos.y = offset_y
@@ -509,31 +517,32 @@ func _on_player_action(player_id: String, action: int, amount: int) -> void:
 	)
 
 func _cleanup_round() -> void:
-	# Xóa community cards cũ
-	for card_node in _spawned_community_cards:
-		if is_instance_valid(card_node):
-			card_node.queue_free()
+	# Clear community cards
+	for c in _spawned_community_cards:
+		if is_instance_valid(c):
+			c.queue_free()
 	_spawned_community_cards.clear()
 	
-	# Xóa hole cards
-	for p_id in _player_cards:
-		for p_card in _player_cards[p_id]:
-			if is_instance_valid(p_card):
-				p_card.queue_free()
+	# Clear player cards
+	for pid in _player_cards:
+		var cards = _player_cards[pid]
+		for c in cards:
+			if is_instance_valid(c):
+				c.queue_free()
 	_player_cards.clear()
 	
-	# Đề phòng còn sót chip chưa dọn
-	for chip in _spawned_chips:
-		if is_instance_valid(chip):
-			chip.queue_free()
-	_spawned_chips.clear()
-	
-	# Xóa action labels
+	# Clear action labels
 	for pid in _action_labels:
 		var lbl = _action_labels[pid]
 		if is_instance_valid(lbl):
 			lbl.queue_free()
 	_action_labels.clear()
+	
+	# Clear chips if any left
+	for c in _spawned_chips:
+		if is_instance_valid(c):
+			c.queue_free()
+	_spawned_chips.clear()
 
 func _on_winners_declared(payouts: Dictionary, best_cards: Dictionary) -> void:
 	# Lật bài bot lên

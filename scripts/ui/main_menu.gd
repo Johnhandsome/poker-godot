@@ -509,7 +509,7 @@ func _show_multiplayer_panel() -> void:
 	
 	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 15)
-	vbox.alignment = BoxContainer.ALIGNMENT_TOP
+	vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
 	panel.add_child(vbox)
 	
 	var title = Label.new()

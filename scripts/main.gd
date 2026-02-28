@@ -379,6 +379,15 @@ func _setup_ui() -> void:
 		log_scroll.scroll_vertical = int(log_scroll.get_v_scroll_bar().max_value)
 	)
 
+# Network listener
+	var nm = get_node("/root/NetworkManager") if has_node("/root/NetworkManager") else null
+	if nm:
+		nm.server_disconnected.connect(func():
+			_add_log_message("[color=red]Server disconnected.[/color]", true)
+			await get_tree().create_timer(2.0).timeout
+			get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+		)
+
 func _add_log_message(msg: String, is_important: bool = false) -> void:
 	if not log_vbox: return
 	
@@ -657,44 +666,57 @@ func _on_player_turn(player_id: String) -> void:
 				var t2 = _tc(" (thinking...)", " (đang nghĩ...)")
 				turn_label.text = t1 + p.id + t2
 				turn_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
+				_set_action_buttons_disabled(true)
 			else:
-				turn_label.text = _tc(">>> YOUR TURN <<<", ">>> LƯỢT CỦA BẠN <<<")
-				turn_label.add_theme_color_override("font_color", Color(1.0, 1.0, 0.3))
+				# Check if it is MY turn
+				var my_id = "You"
+				if gm.multiplayer_mode:
+					my_id = str(multiplayer.get_unique_id())
 				
-				# Mở khóa các nút
-				_set_action_buttons_disabled(false)
-				
-				# Cập nhật nút Call/Check
-				var amount_to_call = gm.current_bet - p.current_bet
-				if btn_call_check:
-					if amount_to_call > 0:
-						if amount_to_call >= p.chips:
-							btn_call_check.text = "CALL ALL-IN"
+				if p.id == my_id:
+					turn_label.text = _tc(">>> YOUR TURN <<<", ">>> LƯỢT CỦA BẠN <<<")
+					turn_label.add_theme_color_override("font_color", Color(1.0, 1.0, 0.3))
+					
+					# Mở khóa các nút
+					_set_action_buttons_disabled(false)
+					
+					# Cập nhật nút Call/Check
+					var amount_to_call = gm.current_bet - p.current_bet
+					if btn_call_check:
+						if amount_to_call > 0:
+							if amount_to_call >= p.chips:
+								btn_call_check.text = "CALL ALL-IN"
+							else:
+								btn_call_check.text = "CALL $" + str(amount_to_call)
+							# Check button styles for urgency?
+							btn_call_check.modulate = Color(1.0, 0.8, 0.8) # Reddish tint for paying
 						else:
-							btn_call_check.text = "CALL $" + str(amount_to_call)
-						# Check button styles for urgency?
-						btn_call_check.modulate = Color(1.0, 0.8, 0.8) # Reddish tint for paying
-					else:
-						btn_call_check.text = "CHECK"
-						btn_call_check.modulate = Color.WHITE
-				
-				# Cập nhật nút Raise
-				if btn_raise:
-					if p.chips <= amount_to_call:
-						btn_raise.disabled = true # Cannot raise if you don't have enough to call/raise
-					else:
-						btn_raise.disabled = false
+							btn_call_check.text = "CHECK"
+							btn_call_check.modulate = Color.WHITE
+					
+					# Cập nhật nút Raise
+					if btn_raise:
+						if p.chips <= amount_to_call:
+							btn_raise.disabled = true # Cannot raise if you don't have enough to call/raise
+						else:
+							btn_raise.disabled = false
 
-				# Cập nhật Raise slider
-				if btn_raise and raise_slider:
-					var min_r = gm.current_bet + gm.min_raise
-					raise_slider.max_value = p.chips + p.current_bet
-					raise_slider.min_value = min(min_r, raise_slider.max_value)
-					raise_slider.step = gm.big_blind # Stepping theo BB cho tròn số
-					raise_slider.value = raise_slider.min_value
-					btn_raise.text = "RAISE"
-					if raise_value_label:
-						raise_value_label.text = "$" + str(int(raise_slider.value))
+					# Cập nhật Raise slider
+					if btn_raise and raise_slider:
+						var min_r = gm.current_bet + gm.min_raise
+						raise_slider.max_value = p.chips + p.current_bet
+						raise_slider.min_value = min(min_r, raise_slider.max_value)
+						raise_slider.step = gm.big_blind # Stepping theo BB cho tròn số
+						raise_slider.value = raise_slider.min_value
+						btn_raise.text = "RAISE"
+						if raise_value_label:
+							raise_value_label.text = "$" + str(int(raise_slider.value))
+				else:
+					# Remote Human turn
+					var t1 = _tc("Turn: ", "Lượt: ")
+					turn_label.text = t1 + p.id
+					turn_label.add_theme_color_override("font_color", Color(0.8, 0.8, 1.0))
+					_set_action_buttons_disabled(true)
 
 func _on_community_changed(_cards: Array) -> void:
 	_update_chips_label()
@@ -824,7 +846,14 @@ func _on_game_over(human_won: bool) -> void:
 	btn.custom_minimum_size = Vector2(250, 60)
 	btn.add_theme_font_size_override("font_size", 24)
 	btn.add_theme_stylebox_override("normal", style)
-	btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/MainMenu.tscn"))
+	btn.pressed.connect(func():
+		var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+		if gm and gm.multiplayer_mode:
+			# Disconnect from session
+			multiplayer.multiplayer_peer = null
+			
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	)
 	vbox.add_child(btn)
 
 # ---- PAUSE MENU & SETTINGS ----

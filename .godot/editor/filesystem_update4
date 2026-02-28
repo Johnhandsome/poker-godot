@@ -1,0 +1,4 @@
+res://scripts/main.gd
+res://scripts/core/game_manager.gd
+res://scripts/visual/table_builder.gd
+res://scripts/visual/physical_manager.gd

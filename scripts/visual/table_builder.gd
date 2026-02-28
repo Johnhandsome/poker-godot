@@ -261,7 +261,7 @@ func _setup_players() -> void:
 			seat_positions.append(pos)
 			
 			# All players are HumanPlayer in multiplayer (remote or local)
-			var chips = 5000 # Default for now
+			var chips = 5000 # Default tournament stack for Multiplayer
 			var player_node = HumanPlayer.new(p_id_str, chips)
 			player_node.name = p_id_str
 			player_node.set_multiplayer_authority(peer_id)

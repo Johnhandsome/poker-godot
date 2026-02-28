@@ -1,5 +1,5 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1772289812
+::res://::1772289884
 ace_test.png::CompressedTexture2D::715006417515984863::1772193261::1772193261::1::::<><><>0<>0<>3a2b4e968742e9700ec73a7f00257ced<>res://.godot/imported/ace_test.png-2e04b68a5632352078e6cb21b8697305.ctex::
 export_presets.cfg::TextFile::-1::1772266615::0::1::::<><><>0<>0<><>::
 icon.svg::CompressedTexture2D::8066444136739839957::1772193261::1772193640::1::::<><><>0<>0<>9baf35d1619875a95cffc72c33a30bee<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
@@ -91,7 +91,7 @@ ai_bot.gd::GDScript::416726937066681678::1772287205::0::1::::AIPlayer<>Player<><
 human_player.gd::GDScript::4601944188120455052::1772289137::0::1::::HumanPlayer<>Player<><>0<>0<><>::
 player.gd::GDScript::2032694543737954681::1772289137::0::1::::Player<>Node<><>0<>0<><>::
 ::res://scripts/ui/::1772205870
-main_menu.gd::GDScript::5582117659919709756::1772289803::0::1::::<>Control<><>0<>0<><>::
+main_menu.gd::GDScript::5582117659919709756::1772289871::0::1::::<>Control<><>0<>0<><>::
 ::res://scripts/visual/::1772193261
 card_texture_generator.gd::GDScript::1054701826354898154::1772196144::0::1::::CardTextureGenerator<>RefCounted<><>0<>0<><>::
 physical_manager.gd::GDScript::4524915079573423143::1772262692::0::1::::PhysicalManager<>Node3D<><>0<>0<><>::

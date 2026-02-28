@@ -75,6 +75,9 @@ func register_player(player_node):
 	players.append(player_node)
 	
 func start_game():
+	if multiplayer.has_multiplayer_peer():
+		multiplayer_mode = true
+		
 	# Xoá các player rác từ lần chơi trước nếu chúng đã bị giải phóng (freed)
 	for i in range(players.size() - 1, -1, -1):
 		if not is_instance_valid(players[i]):
@@ -140,6 +143,14 @@ func request_action_rpc(action: int, amount: int):
 	if str(sender_id) == current_p_id:
 		process_player_action(current_p_id, action, amount)
 
+@rpc("authority", "call_local", "reliable")
+func sync_game_over(winner_id: String):
+	var my_id = str(multiplayer.get_unique_id())
+	if winner_id == my_id:
+		emit_signal("game_over", true)
+	else:
+		emit_signal("game_over", false)
+
 # ------------------------
 
 func _start_new_round():
@@ -194,19 +205,34 @@ func _start_new_round():
 			emit_signal("player_eliminated", p.id)
 			
 	# Kiểm tra Win / Loss Game Over
+	var alive_count = 0
 	var human_alive = false
-	var bots_alive = 0
+	
 	for p in players:
 		if not p.is_eliminated:
+			alive_count += 1
 			if not p.is_ai: human_alive = true
-			else: bots_alive += 1
-			
-	if not human_alive:
-		emit_signal("game_over", false) # Busted
-		return
-	elif bots_alive == 0:
-		emit_signal("game_over", true) # Won
-		return
+	
+	if multiplayer_mode:
+		# Multiplayer Win Condition: Last Man Standing
+		# Ensure we actually started with > 1 player
+		if alive_count <= 1 and players.size() > 1:
+			var winner_id = ""
+			for p in players:
+				if not p.is_eliminated:
+					winner_id = p.id
+					break
+			if winner_id != "":
+				sync_game_over.rpc(winner_id)
+				return
+	else:
+		# Single Player Logic
+		if not human_alive:
+			emit_signal("game_over", false) # Busted
+			return
+		elif alive_count == 1 and human_alive:
+			emit_signal("game_over", true) # Won
+			return
 			
 	if active_players.size() < 2:
 		emit_signal("game_message", _tc("Game Over - Not enough players with chips.", "Trò chơi kết thúc - Không đủ người chơi còn tiền."))
