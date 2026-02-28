@@ -51,12 +51,12 @@ func gather_bets(active_players: Array, all_in_players: Array):
 	if active_bets.is_empty():
 		return
 
-	# 2. Identify contributors (exclude folds if any slipped in, though active_players handles it)
+	# 2. Identify contributors: ALL players who bet contribute money to the pot.
+	# Folded players lose their bets but are not eligible to win.
 	var contributors = []
 	for pid in active_bets.keys():
-		if active_players.has(pid) or all_in_players.has(pid):
-			if active_bets[pid] > 0:
-				contributors.append(pid)
+		if active_bets[pid] > 0:
+			contributors.append(pid)
 	
 	if contributors.is_empty():
 		active_bets.clear()
@@ -115,9 +115,9 @@ func gather_bets(active_players: Array, all_in_players: Array):
 			if active_players.has(existing) or all_in_players.has(existing):
 				next_eligible.append(existing)
 				
-		# Add new contributors
+		# Add new contributors (only non-folded players are eligible to win the pot)
 		for c in level_contributors:
-			if not next_eligible.has(c):
+			if not next_eligible.has(c) and (active_players.has(c) or all_in_players.has(c)):
 				next_eligible.append(c)
 				
 		target_pot.eligible_players = next_eligible

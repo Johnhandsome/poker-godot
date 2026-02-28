@@ -96,11 +96,21 @@ func start_game():
 
 # --- MULTIPLAYER RPCs ---
 
-@rpc("authority", "call_local", "reliable")
+@rpc("authority", "call_remote", "reliable")
 func sync_state(new_state_int: int):
 	var new_state = new_state_int as GameState
 	var old_state = current_state
 	current_state = new_state
+	
+	# On clients, reset players when a new round begins.
+	# The server already resets inside _start_new_round(), but clients
+	# never run that function, so hole_cards would accumulate across rounds,
+	# causing card positions to shift.
+	if new_state == GameState.WAITING_FOR_PLAYERS and multiplayer_mode and not multiplayer.is_server():
+		for p in players:
+			if is_instance_valid(p):
+				p.reset_for_new_round()
+	
 	emit_signal("state_changed", new_state, old_state)
 
 @rpc("authority", "call_local", "reliable")
@@ -275,7 +285,8 @@ func _post_blinds():
 	else:
 		current_player_index = 2 % active_players.size() # Index sau BB
 	
-	# Action closes on BB if no raises
+	# Round closes when action returns to the first-to-act position.
+	# Pre-flop: UTG is first to act; the full orbit (UTG→...→SB→BB→back to UTG) ensures BB gets the option.
 	last_aggressor_index = current_player_index
 
 func _deal_hole_cards_async():
@@ -332,6 +343,8 @@ func _next_player_turn():
 	
 	for p_id_itr in active_players:
 		var player_itr = _get_player_by_id(p_id_itr)
+		if player_itr.is_folded:
+			continue
 		if player_itr.is_all_in:
 			_all_in_count += 1
 		else:
@@ -343,7 +356,7 @@ func _next_player_turn():
 		var all_matched = true
 		for p_id_itr in active_players:
 			var player_itr = _get_player_by_id(p_id_itr)
-			if not player_itr.is_all_in and player_itr.current_bet < current_bet:
+			if not player_itr.is_folded and not player_itr.is_all_in and player_itr.current_bet < current_bet:
 				all_matched = false
 				break
 		
@@ -553,11 +566,13 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 		PlayerAction.CHECK:
 			var amount_to_call = current_bet - p.current_bet
 			if amount_to_call > 0:
-				# Cannot check if there is a bet to call. Force Fold or handle as error.
-				# For robustness, we'll treat it as a fold if logic fails, but UI should prevent this.
-				p.is_folded = true
-			else:
-				_process_bet(p, 0)
+				# Cannot check when there's a bet outstanding. Convert to CALL for safety.
+				if amount_to_call >= p.chips:
+					amount_to_call = p.chips
+					p.is_all_in = true
+				_process_bet(p, amount_to_call)
+				action = PlayerAction.CALL
+				amount = amount_to_call
 			
 		PlayerAction.CALL:
 			var amount_to_call = current_bet - p.current_bet
@@ -569,16 +584,41 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 			
 		PlayerAction.RAISE:
 			var added_amount = amount - p.current_bet
-			if added_amount >= p.chips:
-				added_amount = p.chips
-				p.is_all_in = true
+			if added_amount <= 0:
+				# Invalid raise (not increasing bet). Convert to CALL/CHECK.
+				var call_amt = current_bet - p.current_bet
+				if call_amt > 0:
+					if call_amt >= p.chips:
+						call_amt = p.chips
+						p.is_all_in = true
+					_process_bet(p, call_amt)
+					action = PlayerAction.CALL
+					amount = call_amt
+				else:
+					action = PlayerAction.CHECK
+			else:
+				if added_amount >= p.chips:
+					added_amount = p.chips
+					p.is_all_in = true
 				
-			_process_bet(p, added_amount)
-			var raise_amount = p.current_bet - current_bet
-			if raise_amount >= min_raise:
-				min_raise = raise_amount
-				last_aggressor_index = p_index # Cập nhật người đóng action
-			current_bet = p.current_bet
+				# Enforce minimum raise (unless going all-in)
+				if not p.is_all_in:
+					var min_raise_to = current_bet + min_raise
+					var target_total = p.current_bet + added_amount
+					if target_total < min_raise_to:
+						var needed = min_raise_to - p.current_bet
+						if needed >= p.chips:
+							needed = p.chips
+							p.is_all_in = true
+						added_amount = needed
+				
+				_process_bet(p, added_amount)
+				if p.current_bet > current_bet:
+					var raise_amount = p.current_bet - current_bet
+					if raise_amount >= min_raise:
+						min_raise = raise_amount
+						last_aggressor_index = p_index
+					current_bet = p.current_bet
 			
 		PlayerAction.ALL_IN:
 			var all_in_amount = p.chips

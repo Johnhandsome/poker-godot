@@ -223,7 +223,10 @@ func _on_player_drew_card(card: Card, player: Player) -> void:
 		_player_cards[player.id] = []
 	_player_cards[player.id].append(p_card)
 	
-	var card_index = player.hole_cards.size() - 1
+	# Use _player_cards size (reliably cleared each round in _cleanup_round)
+	# instead of hole_cards.size() which may not be cleared on non-host clients
+	# due to timing issues with sync_state / multiplayer_mode initialization.
+	var card_index = _player_cards[player.id].size() - 1
 	var offset_x = (card_index - 0.5) * 0.7 # Khoảng cách rộng hơn cho bài to
 	var offset_y = 0.02 + card_index * 0.003 # Sát mặt bàn
 	
