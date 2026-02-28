@@ -12,10 +12,11 @@ var btn_fold: Button
 var btn_call_check: Button
 var btn_raise: Button
 var btn_all_in: Button
-var btn_all_in: Button
 var raise_slider: HSlider
 var raise_value_label: Label
 var card_display: HBoxContainer  # 2D card display for human
+
+var blinds_label: Label
 
 # --- LOG UI ---
 var log_vbox: VBoxContainer
@@ -59,11 +60,11 @@ func _ready() -> void:
 		gm.state_changed.connect(_on_state_changed)
 		gm.action_received.connect(_on_action_received)
 		gm.player_turn_started.connect(_on_player_turn)
-		gm.player_turn_started.connect(_on_player_turn)
 		gm.community_cards_changed.connect(_on_community_changed)
 		gm.winners_declared.connect(_on_winners_declared_ui)
 		gm.game_over.connect(_on_game_over)
 		gm.game_message.connect(func(msg): _add_log_message("[color=white]" + msg + "[/color]"))
+		gm.blinds_level_changed.connect(_on_blinds_level_changed)
 	
 	# 5. Kết nối signal card_drawn của human player (chờ 1 frame)
 	await get_tree().process_frame
@@ -138,10 +139,22 @@ func _setup_ui() -> void:
 	turn_label.add_theme_color_override("font_color", THEME_ACCENT)
 	top_hbox.add_child(turn_label)
 	
+	# Spacer
+	var spacer1 = Control.new()
+	spacer1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_hbox.add_child(spacer1)
+	
+	# Blinds level info
+	blinds_label = Label.new()
+	blinds_label.text = "BLINDS: 10/20 (Lvl 1)"
+	blinds_label.add_theme_font_size_override("font_size", 16)
+	blinds_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4)) # Reddish to show pressure
+	top_hbox.add_child(blinds_label)
+	
 	# Spacer để đẩy Menu sang phải
-	var spacer = Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top_hbox.add_child(spacer)
+	var spacer2 = Control.new()
+	spacer2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_hbox.add_child(spacer2)
 	
 	# Menu/Pause button
 	var btn_pause = Button.new()
@@ -299,7 +312,7 @@ func _setup_ui() -> void:
 	
 	log_vbox = VBoxContainer.new()
 	log_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	log_vbox.alignment = BoxContainer.ALIGNMENT_BOTTOM
+	log_vbox.alignment = BoxContainer.ALIGNMENT_END
 	margin_container.add_child(log_vbox)
 	
 	# Kết nối signal nội bộ của ScrollBar để tự cuộn xuống cuối
@@ -490,6 +503,14 @@ func _on_state_changed(new_state: int, _old_state: int) -> void:
 	
 	# Cập nhật chips human
 	_update_chips_label()
+
+func _on_blinds_level_changed(level: int, sb: int, bb: int) -> void:
+	if blinds_label:
+		blinds_label.text = "BLINDS: " + str(sb) + "/" + str(bb) + " (Lvl " + str(level) + ")"
+		# Add a subtle visual pop
+		var tw = create_tween()
+		blinds_label.modulate = Color(1.5, 1.5, 1.5)
+		tw.tween_property(blinds_label, "modulate", Color(1, 1, 1), 0.5)
 
 func _on_action_received(player_id: String, action: int, amount: int) -> void:
 	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null

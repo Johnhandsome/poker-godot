@@ -36,6 +36,7 @@ signal game_message(message: String)
 signal winners_declared(payouts: Dictionary, best_cards: Dictionary)
 signal player_eliminated(player_id: String)
 signal game_over(human_won: bool)
+signal blinds_level_changed(level: int, sb: int, bb: int)
 
 var current_state: GameState = GameState.WAITING_FOR_PLAYERS
 var players: Array = [] # Array of player objects (nodes)
@@ -56,6 +57,10 @@ var small_blind: int = 10
 var big_blind: int = 20
 var current_bet: int = 0
 var min_raise: int = 20
+
+# Tính năng Blinds Progression (Giải đấu)
+var hands_played: int = 0
+var current_blind_level: int = 1
 
 func _ready():
 	deck = Deck.new()
@@ -81,6 +86,19 @@ func _start_new_round():
 	pot_manager.reset()
 	community_cards.clear()
 	emit_signal("community_cards_changed", community_cards)
+	
+	# Tính năng Tournament Blinds: Cứ 5 ván thì tiền cược tự động nhân đôi
+	hands_played += 1
+	var new_level = 1 + int((hands_played - 1) / 5)
+	if new_level > current_blind_level:
+		current_blind_level = new_level
+		small_blind = 10 * int(pow(2, current_blind_level - 1))
+		big_blind = 20 * int(pow(2, current_blind_level - 1))
+		emit_signal("game_message", "[color=red][b]BLINDS LÊN CẤP " + str(current_blind_level) + ": $" + str(small_blind) + "/$" + str(big_blind) + "[/b][/color]")
+	emit_signal("blinds_level_changed", current_blind_level, small_blind, big_blind)
+	
+	# Phục hồi min_raise mặc định của level mới
+	min_raise = big_blind
 	
 	# Tìm vị trí Dealer hiện tại trong danh sách vật lý
 	var phys_dealer_idx = 0

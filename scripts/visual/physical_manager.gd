@@ -583,6 +583,10 @@ func _on_winners_declared(payouts: Dictionary, best_cards: Dictionary) -> void:
 			add_child(label)
 			_action_labels[p_id] = label
 			
+			if is_winner:
+				_spawn_confetti(p.seat_position)
+				_spawn_floating_text("+$" + str(payouts[p_id]), p.seat_position, Color(0.2, 1.0, 0.4))
+			
 			# Highlight/Dim hole cards
 			if _player_cards.has(p_id):
 				for p_card in _player_cards[p_id]:
@@ -688,3 +692,66 @@ func _animate_fold_cards(player_id: String) -> void:
 	
 	# Xóa khỏi tracking sau khi animation chạy
 	_player_cards.erase(player_id)
+
+# -------- PREMIUM AESTHETICS (CONFETTI & TEXT) --------
+
+func _spawn_floating_text(text_str: String, pos: Vector3, color: Color) -> void:
+	var label = Label3D.new()
+	label.text = text_str
+	label.pixel_size = 0.008
+	label.font_size = 64
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.modulate = color
+	label.outline_size = 8
+	label.outline_modulate = Color(0, 0, 0, 0.8)
+	label.position = pos + Vector3(0, 0.5, 0)
+	label.no_depth_test = true
+	add_child(label)
+	
+	var tw = create_tween().set_parallel(true)
+	label.scale = Vector3.ZERO
+	tw.tween_property(label, "scale", Vector3.ONE, 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(label, "position:y", label.position.y + 1.2, 2.5).set_ease(Tween.EASE_OUT)
+	tw.tween_property(label, "modulate:a", 0.0, 2.5).set_ease(Tween.EASE_IN)
+	
+	tw.chain().tween_callback(label.queue_free)
+
+func _spawn_confetti(pos: Vector3) -> void:
+	var particles = GPUParticles3D.new()
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.85, 0.2) # Vàng chóe
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.8, 0.1)
+	mat.emission_energy_multiplier = 2.0
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
+	
+	var mesh = QuadMesh.new()
+	mesh.size = Vector2(0.08, 0.08)
+	mesh.material = mat
+	particles.draw_pass_1 = mesh
+	
+	var pmat = ParticleProcessMaterial.new()
+	pmat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pmat.emission_sphere_radius = 0.4
+	pmat.direction = Vector3(0, 1, 0)
+	pmat.spread = 60.0
+	pmat.initial_velocity_min = 4.0
+	pmat.initial_velocity_max = 7.0
+	pmat.gravity = Vector3(0, -9.8, 0)
+	pmat.scale_min = 0.5
+	pmat.scale_max = 1.5
+	pmat.angle_min = -180.0
+	pmat.angle_max = 180.0
+	
+	particles.process_material = pmat
+	particles.amount = 100
+	particles.lifetime = 3.0
+	particles.one_shot = true
+	particles.explosiveness = 0.95
+	
+	particles.position = pos + Vector3(0, 1.0, 0)
+	add_child(particles)
+	particles.emitting = true
+	
+	get_tree().create_timer(4.0).timeout.connect(particles.queue_free)

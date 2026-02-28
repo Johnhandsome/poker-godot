@@ -130,9 +130,32 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 	# Gửi tín hiệu hành động vật lý (Ném chip, vất bài) => Tích hợp animation
 	physical_action_performed.emit(chosen_action, chosen_amount, throw_force)
 	
+	# --- BANTER CHATTER LOGIC ---
+	_emit_chatter(chosen_action, amount_to_call, chosen_amount)
+	
 	# Trả về kết quả cho Logic Core
 	if game_manager:
 		game_manager.process_player_action(id, chosen_action, chosen_amount)
+
+func _emit_chatter(action: int, amount_to_call: int, raise_amount: int) -> void:
+	# Only chat 15% of the time to avoid spam
+	if randf() > 0.15: return
+	
+	var msg = ""
+	match action:
+		GameManager.PlayerAction.FOLD:
+			if amount_to_call > game_manager.big_blind * 3:
+				var lines = ["Too rich for my blood...", "You got lucky this time.", "I fold. Show me your bluff!", "I'm out.", "Folding..."]
+				msg = lines[randi() % lines.size()]
+		GameManager.PlayerAction.RAISE:
+			var lines = ["Read 'em and weep!", "Let's make this interesting.", "Raise! Can you handle it?", "I've got a monster."]
+			msg = lines[randi() % lines.size()]
+		GameManager.PlayerAction.ALL_IN:
+			var lines = ["ALL-IN BABY!", "Time to go home, folks.", "Pushing all my chips in!", "Go big or go home!"]
+			msg = lines[randi() % lines.size()]
+			
+	if msg != "":
+		game_manager.emit_signal("game_message", "[color=yellow][b]" + self.id + ":[/b][/color] " + msg)
 
 # Thuật toán đánh giá Hand cho Bot dựa trên luật Texas Hold'em cơ bản
 func _evaluate_hand_strength(community_cards: Array[Card]) -> float:
