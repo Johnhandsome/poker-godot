@@ -324,18 +324,18 @@ func _on_physical_action(action: int, amount: int, _force: float, player: Player
 			tween.tween_property(chip, "global_position", mid, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			# Bay tới vị trí thả
 			tween.tween_property(chip, "global_position", drop_pos, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-			# Unfreeze — vật lý tiếp quản: chip rơi, nảy, lắc, nằm yên
+			var chip_id = chip.get_instance_id()
 			tween.tween_callback(func(): 
-				chip.freeze = false
-				chip.is_settled = false
-				chip.time_settled = 0.0
-				
-				# Ép phát âm thanh rớt mâm ngay lập tức để không bị trễ tiếng
-				var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
-				if synth: synth.play_chip_clink()
+				var c = instance_from_id(chip_id) as PhysicalChip
+				if is_instance_valid(c):
+					c.freeze = false
+					c.is_settled = false
+					c.time_settled = 0.0
 					
-				# Thêm xoay nhẹ khi rơi cho tự nhiên
-				chip.apply_torque_impulse(Vector3(randf_range(-0.3, 0.3), randf_range(-0.2, 0.2), randf_range(-0.3, 0.3)))
+					var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+					if synth: synth.play_chip_clink()
+						
+					c.apply_torque_impulse(Vector3(randf_range(-0.3, 0.3), randf_range(-0.2, 0.2), randf_range(-0.3, 0.3)))
 			)
 			
 			_spawned_chips.append(chip)
@@ -391,13 +391,9 @@ func _gather_chips_to_pot() -> void:
 	var delay = 0.0
 	
 	# Phát âm thanh lùa tiền (lấy 1 tiếng chip rớt ngẫu nhiên đóng vai trò lùa)
-	var sweep_sound = preload("res://assets/audio/chip_drop_1.wav")
-	var audio_player = AudioStreamPlayer.new()
-	audio_player.stream = sweep_sound
-	audio_player.pitch_scale = 0.8 # Hạ tông thành tiếng quét
-	audio_player.volume_db = -2.0
-	add_child(audio_player)
-	audio_player.play()
+	# Phát âm thanh lùa tiền (dùng tiếng slide thay thế)
+	var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if synth: synth.play_card_slide()
 	
 	for chip in _spawned_chips:
 		if is_instance_valid(chip):
@@ -414,7 +410,7 @@ func _gather_chips_to_pot() -> void:
 			
 			delay += 0.02 # Các chip lùa vào lần lượt như chổi quyét
 			
-	gather_tween.chain().tween_callback(audio_player.queue_free)
+	gather_tween.chain()
 
 # ---- EVENT HANDLERS ----
 func _on_game_state_changed(new_state: int, _old_state: int) -> void:
@@ -503,10 +499,12 @@ func _on_player_action(player_id: String, action: int, amount: int) -> void:
 	var tween = create_tween()
 	tween.tween_interval(2.0)
 	tween.tween_property(label, "modulate:a", 0.0, 0.5)
+	var lbl_id = label.get_instance_id()
 	tween.tween_callback(func():
-		if is_instance_valid(label):
-			label.queue_free()
-		if _action_labels.has(player_id) and _action_labels[player_id] == label:
+		var l = instance_from_id(lbl_id) as Label3D
+		if is_instance_valid(l):
+			l.queue_free()
+		if _action_labels.has(player_id) and is_instance_valid(l) and _action_labels[player_id] == l:
 			_action_labels.erase(player_id)
 	)
 
@@ -666,9 +664,12 @@ func _animate_fold_cards(player_id: String) -> void:
 		var mid_pos = p_card.global_position
 		mid_pos.y += 0.5
 		
+		var c_id = p_card.get_instance_id()
 		tween.tween_callback(func():
-			var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
-			if synth: synth.play_card_slide()
+			var c = instance_from_id(c_id) as PhysicalCard
+			if is_instance_valid(c):
+				var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+				if synth: synth.play_card_slide()
 		)
 		
 		tween.tween_property(p_card, "global_position", mid_pos, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)

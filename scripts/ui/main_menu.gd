@@ -117,6 +117,38 @@ func _ready() -> void:
 	
 	vbox.add_child(btn_play)
 	
+	# Nút Settings
+	var btn_settings = Button.new()
+	btn_settings.text = "SETTINGS"
+	btn_settings.custom_minimum_size = Vector2(300, 60)
+	btn_settings.add_theme_font_size_override("font_size", 24)
+	var style_settings = style_play.duplicate()
+	style_settings.bg_color = Color(0.2, 0.4, 0.8, 0.9)
+	var style_settings_hover = style_settings.duplicate()
+	style_settings_hover.bg_color = Color(0.3, 0.5, 0.9, 0.9)
+	
+	btn_settings.add_theme_stylebox_override("normal", style_settings)
+	btn_settings.add_theme_stylebox_override("hover", style_settings_hover)
+	btn_settings.add_theme_stylebox_override("pressed", style_settings)
+	
+	btn_settings.pressed.connect(func():
+		var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+		if synth: synth.play_ui_click()
+		_show_settings_panel()
+	)
+	
+	btn_settings.mouse_entered.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_settings, "scale", Vector2(1.05, 1.05), 0.1)
+	)
+	btn_settings.mouse_exited.connect(func():
+		var tw = create_tween()
+		tw.tween_property(btn_settings, "scale", Vector2(1.0, 1.0), 0.1)
+	)
+	btn_settings.pivot_offset = btn_settings.custom_minimum_size / 2.0
+	
+	vbox.add_child(btn_settings)
+	
 	# Nút Quit
 	var btn_quit = Button.new()
 	btn_quit.text = "QUIT"
@@ -152,6 +184,147 @@ func _ready() -> void:
 	btn_quit.pivot_offset = btn_quit.custom_minimum_size / 2.0
 	
 	vbox.add_child(btn_quit)
+
+func _show_settings_panel() -> void:
+	if has_node("SettingsPanel"): return
+	
+	var panel = PanelContainer.new()
+	panel.name = "SettingsPanel"
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.custom_minimum_size = Vector2(500, 400)
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.15, 0.95)
+	style.corner_radius_top_left = 16
+	style.corner_radius_top_right = 16
+	style.corner_radius_bottom_left = 16
+	style.corner_radius_bottom_right = 16
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.4, 0.6, 1.0, 0.5)
+	panel.add_theme_stylebox_override("panel", style)
+	
+	var vbox = VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	panel.add_child(vbox)
+	
+	var title = Label.new()
+	title.text = "SETTINGS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	vbox.add_child(title)
+	
+	var sm = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	
+	# Master Volume
+	var master_box = HBoxContainer.new()
+	master_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var master_lbl = Label.new()
+	master_lbl.text = "Master Vol:"
+	master_lbl.custom_minimum_size = Vector2(120, 0)
+	var master_slider = HSlider.new()
+	master_slider.custom_minimum_size = Vector2(200, 30)
+	master_slider.max_value = 1.0
+	master_slider.step = 0.05
+	if sm: master_slider.value = sm.master_volume
+	master_box.add_child(master_lbl)
+	master_box.add_child(master_slider)
+	vbox.add_child(master_box)
+	
+	# SFX Volume
+	var sfx_box = HBoxContainer.new()
+	sfx_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var sfx_lbl = Label.new()
+	sfx_lbl.text = "SFX Vol:"
+	sfx_lbl.custom_minimum_size = Vector2(120, 0)
+	var sfx_slider = HSlider.new()
+	sfx_slider.custom_minimum_size = Vector2(200, 30)
+	sfx_slider.max_value = 1.0
+	sfx_slider.step = 0.05
+	if sm: sfx_slider.value = sm.sfx_volume
+	sfx_box.add_child(sfx_lbl)
+	sfx_box.add_child(sfx_slider)
+	vbox.add_child(sfx_box)
+	
+	# BGM Volume
+	var bgm_box = HBoxContainer.new()
+	bgm_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var bgm_lbl = Label.new()
+	bgm_lbl.text = "Music Vol:"
+	bgm_lbl.custom_minimum_size = Vector2(120, 0)
+	var bgm_slider = HSlider.new()
+	bgm_slider.custom_minimum_size = Vector2(200, 30)
+	bgm_slider.max_value = 1.0
+	bgm_slider.step = 0.05
+	if sm: bgm_slider.value = sm.bgm_volume
+	bgm_box.add_child(bgm_lbl)
+	bgm_box.add_child(bgm_slider)
+	vbox.add_child(bgm_box)
+	
+	# Fast Bot Mode
+	var fast_box = HBoxContainer.new()
+	fast_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var fast_lbl = Label.new()
+	fast_lbl.text = "Fast Bot Mode:"
+	fast_lbl.custom_minimum_size = Vector2(120, 0)
+	var fast_check = CheckBox.new()
+	fast_check.text = "Skip Thinking Delays"
+	if sm: fast_check.button_pressed = sm.fast_bot_mode
+	fast_box.add_child(fast_lbl)
+	fast_box.add_child(fast_check)
+	vbox.add_child(fast_box)
+	
+	# Tín hiệu cập nhật
+	if sm:
+		var update_audio = func():
+			sm.master_volume = master_slider.value
+			sm.sfx_volume = sfx_slider.value
+			sm.bgm_volume = bgm_slider.value
+			sm.apply_and_save()
+			
+			var target_linear = sm.master_volume * sm.bgm_volume
+			if target_linear <= 0.01:
+				ambient_player.volume_db = -80.0
+			else:
+				ambient_player.volume_db = linear_to_db(target_linear)
+				
+		master_slider.value_changed.connect(func(_val): update_audio.call())
+		sfx_slider.value_changed.connect(func(_val): update_audio.call())
+		bgm_slider.value_changed.connect(func(_val): update_audio.call())
+		
+		fast_check.toggled.connect(func(pressed):
+			sm.fast_bot_mode = pressed
+			sm.apply_and_save()
+		)
+	
+	# Nút Close
+	var btn_close = Button.new()
+	btn_close.text = "CLOSE"
+	btn_close.custom_minimum_size = Vector2(200, 50)
+	var style_close = StyleBoxFlat.new()
+	style_close.bg_color = Color(0.8, 0.2, 0.2, 0.9)
+	style_close.corner_radius_top_left = 8
+	style_close.corner_radius_top_right = 8
+	style_close.corner_radius_bottom_left = 8
+	style_close.corner_radius_bottom_right = 8
+	btn_close.add_theme_stylebox_override("normal", style_close)
+	btn_close.pressed.connect(func():
+		var synth = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+		if synth: synth.play_ui_click()
+		panel.queue_free()
+	)
+	var btn_box = CenterContainer.new()
+	btn_box.add_child(btn_close)
+	vbox.add_child(btn_box)
+	
+	ui_layer.add_child(panel)
+	
+	# Hiện ứng rớt xuống
+	panel.position.y = -500
+	var tw = create_tween()
+	tw.tween_property(panel, "position:y", (size.y - panel.custom_minimum_size.y) / 2.0, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 # ---- BACKGROUND ANIMATIONS ----
 func _spawn_floating_cards() -> void:

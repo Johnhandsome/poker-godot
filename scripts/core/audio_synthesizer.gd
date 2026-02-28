@@ -46,7 +46,18 @@ func _play_cached(type: String) -> void:
 	if not cached_sounds.has(type): return
 	var player = _get_available_player()
 	player.stream = cached_sounds[type]
-	player.volume_db = 0.0 # Volume đã được nén sẵn bên trong hàm bake
+	
+	# Tính toán volume theo SettingsManager
+	var db_volume = 0.0
+	if has_node("/root/SettingsManager"):
+		var sm = get_node("/root/SettingsManager")
+		var target_linear = sm.master_volume * sm.sfx_volume
+		if target_linear <= 0.01:
+			db_volume = -80.0
+		else:
+			db_volume = linear_to_db(target_linear)
+			
+	player.volume_db = db_volume
 	player.play()
 
 # --- Procedural Synthesis Heart ---

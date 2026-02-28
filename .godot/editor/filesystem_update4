@@ -10,3 +10,5 @@ res://scenes/main.tscn
 res://scripts/players/player.gd
 res://scripts/ui/main_menu.gd
 res://scripts/visual/table_builder.gd
+res://scripts/core/audio_synthesizer.gd
+res://scripts/core/settings_manager.gd

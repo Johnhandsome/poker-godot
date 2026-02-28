@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 [autoload]
 AudioSynthesizer="*res://scripts/core/audio_synthesizer.gd"
 SaveManager="*res://scripts/core/save_manager.gd"
+SettingsManager="*res://scripts/core/settings_manager.gd"
 
 GameManager="*res://scripts/core/game_manager.gd"
 

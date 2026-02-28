@@ -63,7 +63,10 @@ func _ready() -> void:
 	if gm:
 		for p in gm.players:
 			if !p.is_ai:
-				p.card_drawn.connect(_on_human_cvar dealer_btn: MeshInstance3D)
+				p.card_drawn.connect(_on_human_card_drawn)
+				break
+
+var dealer_btn: MeshInstance3D
 
 # ---- THEME COLORS (Dark Emerald + Gold) ----
 const THEME_BG_DARK = Color(0.06, 0.09, 0.07, 0.88)       # Nền tối xanh rêu đậm
@@ -81,8 +84,7 @@ const THEME_BTN_BORDER_RAISE = Color(0.90, 0.78, 0.20)     # Viền nút Raise
 const THEME_BTN_BORDER_ALLIN = Color(0.80, 0.40, 0.90)     # Viền nút All-in
 
 func _setup_ui() -> void:
-	# Khởi tạo UI	# _setup_table_layout()
-	
+	# Khởi tạo UI
 	var canvas = CanvasLayer.new()
 	canvas.name = "GameUI"
 	add_child(canvas)
@@ -128,6 +130,28 @@ func _setup_ui() -> void:
 	turn_label.add_theme_font_size_override("font_size", 18)
 	turn_label.add_theme_color_override("font_color", THEME_ACCENT)
 	top_hbox.add_child(turn_label)
+	
+	# Spacer để đẩy Menu sang phải
+	var spacer = Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_hbox.add_child(spacer)
+	
+	# Menu/Pause button
+	var btn_pause = Button.new()
+	btn_pause.text = " MENU ⚙️ "
+	btn_pause.custom_minimum_size = Vector2(100, 36)
+	btn_pause.add_theme_font_size_override("font_size", 16)
+	var pause_style = StyleBoxFlat.new()
+	pause_style.bg_color = THEME_BG_DARK
+	pause_style.border_width_all = 1
+	pause_style.border_color = THEME_TEXT
+	pause_style.corner_radius_top_left = 6
+	pause_style.corner_radius_top_right = 6
+	pause_style.corner_radius_bottom_left = 6
+	pause_style.corner_radius_bottom_right = 6
+	btn_pause.add_theme_stylebox_override("normal", pause_style)
+	btn_pause.pressed.connect(_show_pause_menu)
+	top_hbox.add_child(btn_pause)
 	
 	# ---- BOTTOM BAR: Cards + Chips + Action buttons (tất cả trong 1 thanh) ----
 	var bottom_panel = PanelContainer.new()
@@ -502,3 +526,191 @@ func _on_game_over(human_won: bool) -> void:
 	btn.add_theme_stylebox_override("normal", style)
 	btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/MainMenu.tscn"))
 	vbox.add_child(btn)
+
+# ---- PAUSE MENU & SETTINGS ----
+func _show_pause_menu() -> void:
+	_play_ui_sound()
+	if has_node("PauseOverlay"): return
+	
+	var overlay = ColorRect.new()
+	overlay.name = "PauseOverlay"
+	overlay.color = Color(0, 0, 0, 0.7)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	
+	var vbox = VBoxContainer.new()
+	vbox.set_anchors_preset(Control.PRESET_CENTER)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	overlay.add_child(vbox)
+	
+	var title = Label.new()
+	title.text = "PAUSED"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 48)
+	title.add_theme_color_override("font_color", THEME_GOLD)
+	vbox.add_child(title)
+	
+	var btn_resume = _create_menu_button("RESUME")
+	btn_resume.pressed.connect(func():
+		_play_ui_sound()
+		overlay.queue_free()
+	)
+	vbox.add_child(btn_resume)
+	
+	var btn_settings = _create_menu_button("SETTINGS")
+	btn_settings.pressed.connect(func():
+		_play_ui_sound()
+		_show_settings_panel()
+	)
+	vbox.add_child(btn_settings)
+	
+	var btn_quit = _create_menu_button("QUIT TO MENU")
+	btn_quit.pressed.connect(func():
+		_play_ui_sound()
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	)
+	vbox.add_child(btn_quit)
+	
+	add_child(overlay)
+
+func _create_menu_button(text_str: String) -> Button:
+	var btn = Button.new()
+	btn.text = text_str
+	btn.custom_minimum_size = Vector2(250, 50)
+	btn.add_theme_font_size_override("font_size", 20)
+	var style = StyleBoxFlat.new()
+	style.bg_color = THEME_BG_DARK
+	style.border_width_bottom = 3
+	style.border_color = THEME_GOLD
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_left = 6
+	style.corner_radius_bottom_right = 6
+	btn.add_theme_stylebox_override("normal", style)
+	return btn
+
+# Tái sử dụng code SettingsPanel từ MainMenu
+func _show_settings_panel() -> void:
+	if has_node("SettingsPanel"): return
+	
+	var panel = PanelContainer.new()
+	panel.name = "SettingsPanel"
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.custom_minimum_size = Vector2(500, 400)
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.15, 0.95)
+	style.corner_radius_top_left = 16
+	style.corner_radius_top_right = 16
+	style.corner_radius_bottom_left = 16
+	style.corner_radius_bottom_right = 16
+	style.border_width_all = 2
+	style.border_color = Color(0.4, 0.6, 1.0, 0.5)
+	panel.add_theme_stylebox_override("panel", style)
+	
+	var vbox = VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	panel.add_child(vbox)
+	
+	var title = Label.new()
+	title.text = "SETTINGS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	vbox.add_child(title)
+	
+	var sm = get_node("/root/SettingsManager") if has_node("/root/SettingsManager") else null
+	
+	var master_box = HBoxContainer.new()
+	master_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var master_lbl = Label.new()
+	master_lbl.text = "Master Vol:"
+	master_lbl.custom_minimum_size = Vector2(120, 0)
+	var master_slider = HSlider.new()
+	master_slider.custom_minimum_size = Vector2(200, 30)
+	master_slider.max_value = 1.0
+	master_slider.step = 0.05
+	if sm: master_slider.value = sm.master_volume
+	master_box.add_child(master_lbl)
+	master_box.add_child(master_slider)
+	vbox.add_child(master_box)
+	
+	var sfx_box = HBoxContainer.new()
+	sfx_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var sfx_lbl = Label.new()
+	sfx_lbl.text = "SFX Vol:"
+	sfx_lbl.custom_minimum_size = Vector2(120, 0)
+	var sfx_slider = HSlider.new()
+	sfx_slider.custom_minimum_size = Vector2(200, 30)
+	sfx_slider.max_value = 1.0
+	sfx_slider.step = 0.05
+	if sm: sfx_slider.value = sm.sfx_volume
+	sfx_box.add_child(sfx_lbl)
+	sfx_box.add_child(sfx_slider)
+	vbox.add_child(sfx_box)
+	
+	var bgm_box = HBoxContainer.new()
+	bgm_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var bgm_lbl = Label.new()
+	bgm_lbl.text = "Music Vol:"
+	bgm_lbl.custom_minimum_size = Vector2(120, 0)
+	var bgm_slider = HSlider.new()
+	bgm_slider.custom_minimum_size = Vector2(200, 30)
+	bgm_slider.max_value = 1.0
+	bgm_slider.step = 0.05
+	if sm: bgm_slider.value = sm.bgm_volume
+	bgm_box.add_child(bgm_lbl)
+	bgm_box.add_child(bgm_slider)
+	vbox.add_child(bgm_box)
+	
+	var fast_box = HBoxContainer.new()
+	fast_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var fast_lbl = Label.new()
+	fast_lbl.text = "Fast Bot Mode:"
+	fast_lbl.custom_minimum_size = Vector2(120, 0)
+	var fast_check = CheckBox.new()
+	fast_check.text = "Skip Thinking Delays"
+	if sm: fast_check.button_pressed = sm.fast_bot_mode
+	fast_box.add_child(fast_lbl)
+	fast_box.add_child(fast_check)
+	vbox.add_child(fast_box)
+	
+	if sm:
+		var update_audio = func():
+			sm.master_volume = master_slider.value
+			sm.sfx_volume = sfx_slider.value
+			sm.bgm_volume = bgm_slider.value
+			sm.apply_and_save()
+			
+			var target_linear = sm.master_volume * sm.bgm_volume
+			if target_linear <= 0.01:
+				for child in get_children():
+					if child is AudioStreamPlayer:
+						child.volume_db = -80.0
+			else:
+				var db = linear_to_db(target_linear)
+				for child in get_children():
+					if child is AudioStreamPlayer:
+						child.volume_db = db
+				
+		master_slider.value_changed.connect(func(_val): update_audio.call())
+		sfx_slider.value_changed.connect(func(_val): update_audio.call())
+		bgm_slider.value_changed.connect(func(_val): update_audio.call())
+		
+		fast_check.toggled.connect(func(pressed):
+			sm.fast_bot_mode = pressed
+			sm.apply_and_save()
+		)
+	
+	var btn_close = Button.new()
+	btn_close.text = "CLOSE"
+	btn_close.custom_minimum_size = Vector2(200, 50)
+	var btn_box = CenterContainer.new()
+	btn_box.add_child(btn_close)
+	vbox.add_child(btn_box)
+	
+	btn_close.pressed.connect(func():
+		_play_ui_sound()
+		panel.queue_free()
+	)
+	
+	add_child(panel)

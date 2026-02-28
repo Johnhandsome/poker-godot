@@ -27,6 +27,10 @@ func request_action(current_table_bet: int, min_raise: int) -> void:
 	if bet_ratio > 0.3:
 		base_think_time += randf_range(2.0, 4.0) # Vẻ mặt căng thẳng
 		
+	if has_node("/root/SettingsManager"):
+		if get_node("/root/SettingsManager").fast_bot_mode:
+			base_think_time = 0.1
+			
 	# Dùng Callable có bind param để Godot quản lý rác giúp tránh lỗi capture
 	get_tree().create_timer(base_think_time).timeout.connect(
 		Callable(self, "_decide_action").bind(current_table_bet, min_raise)
