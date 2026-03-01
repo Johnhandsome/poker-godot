@@ -144,11 +144,11 @@ func sync_action(p_id: String, action: int, amount: int):
 	emit_signal("action_received", p_id, action, amount)
 
 @rpc("authority", "call_local", "reliable")
-func sync_chips(p_id: String, chips: int, current_bet: int):
+func sync_chips(p_id: String, chips: int, bet_amount: int):
 	var p = _get_player_by_id(p_id)
 	if p:
 		p.chips = chips
-		p.current_bet = current_bet
+		p.current_bet = bet_amount
 	emit_signal("action_received", p_id, -1, 0) # Trigger UI update
 
 @rpc("any_peer", "call_local", "reliable")
@@ -183,7 +183,7 @@ func _start_new_round():
 	
 	# Tính năng Tournament Blinds: Cứ 5 ván thì tiền cược tự động nhân đôi
 	hands_played += 1
-	var new_level = 1 + int((hands_played - 1) / 5)
+	var new_level = 1 + int(float(hands_played - 1) / 5.0)
 	if new_level > current_blind_level:
 		current_blind_level = new_level
 		small_blind = 10 * int(pow(2, current_blind_level - 1))

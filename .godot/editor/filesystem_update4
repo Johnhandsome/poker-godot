@@ -1,0 +1,6 @@
+res://scripts/main.gd
+res://scripts/core/game_manager.gd
+res://scripts/core/network_manager.gd
+res://scripts/core/settings_manager.gd
+res://scripts/ui/main_menu.gd
+res://scripts/visual/table_builder.gd
