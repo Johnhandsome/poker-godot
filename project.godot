@@ -34,3 +34,14 @@ window/stretch/mode="canvas_items"
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[input]
+
+ui_text_submit/deadzone=0.5
+ui_text_submit/events=[InputEventKey(resource_local_to_scene=false, scancode=41, unicode=0, echo=false, pressed=false, ctrl_pressed=false, alt_pressed=false, shift_pressed=false, meta_pressed=false), InputEventKey(resource_local_to_scene=false, scancode=32, unicode=0, echo=false, pressed=false, ctrl_pressed=false, alt_pressed=false, shift_pressed=false, meta_pressed=false)]
+ui_cancel/deadzone=0.5
+ui_cancel/events=[InputEventKey(resource_local_to_scene=false, scancode=419430540, unicode=0, echo=false, pressed=false, ctrl_pressed=false, alt_pressed=false, shift_pressed=false, meta_pressed=false)]
+ui_left/deadzone=0.5
+ui_left/events=[InputEventKey(resource_local_to_scene=false, scancode=419430037, unicode=0, echo=false, pressed=false, ctrl_pressed=false, alt_pressed=false, shift_pressed=false, meta_pressed=false)]
+ui_right/deadzone=0.5
+ui_right/events=[InputEventKey(resource_local_to_scene=false, scancode=419430039, unicode=0, echo=false, pressed=false, ctrl_pressed=false, alt_pressed=false, shift_pressed=false, meta_pressed=false)]

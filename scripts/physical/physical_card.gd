@@ -91,6 +91,19 @@ func dim() -> void:
 func highlight() -> void:
 	if _front_material:
 		_front_material.albedo_color = Color(1.0, 1.0, 1.0) # Normal bright
+		# Golden glow via emission
+		_front_material.emission_enabled = true
+		_front_material.emission = Color(1.0, 0.85, 0.2)
+		_front_material.emission_energy_multiplier = 0.6
 	
 	var tween = create_tween()
 	tween.tween_property(self, "global_position:y", global_position.y + 0.08, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	
+	# Pulse the emission energy for a glowing effect
+	var pulse = create_tween().set_loops()
+	pulse.tween_method(func(v: float):
+		if _front_material: _front_material.emission_energy_multiplier = v
+	, 0.4, 1.0, 0.6).set_trans(Tween.TRANS_SINE)
+	pulse.tween_method(func(v: float):
+		if _front_material: _front_material.emission_energy_multiplier = v
+	, 1.0, 0.4, 0.6).set_trans(Tween.TRANS_SINE)

@@ -18,6 +18,8 @@ func _ready() -> void:
 	cached_sounds["click"] = _generate_wav("click", 0.05, 0.4)
 	cached_sounds["clink"] = _generate_wav("clink", 0.08, 0.6)
 	cached_sounds["slide"] = _generate_wav("slide", 0.15, 0.2)
+	cached_sounds["snap"] = _generate_wav("snap", 0.06, 0.5)
+	cached_sounds["tick"] = _generate_wav("tick", 0.03, 0.35)
 	cached_sounds["win"] = _generate_wav("win", 1.5, 0.5)
 
 func _get_available_player() -> AudioStreamPlayer:
@@ -38,6 +40,12 @@ func play_chip_clink() -> void:
 func play_card_slide() -> void:
 	_play_cached("slide")
 	
+func play_card_snap() -> void:
+	_play_cached("snap")
+
+func play_tick() -> void:
+	_play_cached("tick")
+
 func play_win() -> void:
 	_play_cached("win")
 
@@ -93,7 +101,19 @@ func _generate_wav(type: String, duration: float, volume: float) -> AudioStreamW
 				sample_val = sample_val * 0.5 + sin(time * 2.0 * PI * 800.0) * 0.1
 				# Envelope vuốt lên rồi vuốt xuống mượt mà (Attack & Decay)
 				envelope = sin((time / duration) * PI) 
-				
+
+			"snap":
+				# Short sharp snap — card flipping sound
+				var noise = randf_range(-1.0, 1.0)
+				var tone = sin(time * 2.0 * PI * 2200.0)
+				sample_val = noise * 0.6 + tone * 0.4
+				envelope = exp(-time * 60.0)
+
+			"tick":
+				# Short tick for timer warning
+				sample_val = sin(time * 2.0 * PI * 1200.0)
+				envelope = exp(-time * 80.0)
+
 			"win":
 				# Tiếng chuông báo hiệu chiến thắng (Vibraphone/Bell chord)
 				var f1 = sin(time * 2.0 * PI * 440.0) # Nốt A4

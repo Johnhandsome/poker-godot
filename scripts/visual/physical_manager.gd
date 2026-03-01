@@ -296,16 +296,17 @@ func _on_community_cards_dealt(cards: Array) -> void:
 		else:
 			p_card.is_face_up = false
 			p_card._update_visuals()
-			p_card.modulate.a = 0.0
+			# Start hidden via scale (RigidBody3D has no modulate)
+			p_card.scale = Vector3(0.01, 0.01, 0.01)
 			var p_id = p_card.get_instance_id()
 			var tw = create_tween()
 			if stagger_delay > 0:
 				tw.tween_interval(stagger_delay)
-			# Fade in face-down
-			tw.tween_property(p_card, "modulate:a", 1.0, 0.15)
+			# Scale in face-down
+			tw.tween_property(p_card, "scale", Vector3(1, 1, 1), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 			# Brief pause then flip
 			tw.tween_interval(0.1)
-			# Simulate flip by scaling Y to 0, swapping texture, scaling back
+			# Simulate flip by scaling Z to 0, swapping texture, scaling back
 			tw.tween_property(p_card, "scale:z", 0.01, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 			tw.tween_callback(func():
 				var c = instance_from_id(p_id) as PhysicalCard

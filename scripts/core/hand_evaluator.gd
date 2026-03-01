@@ -96,10 +96,14 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 	if four_of_a_kind != -1:
 		result.rank = HandRank.FOUR_OF_A_KIND
 		result.kickers = [four_of_a_kind]
-		# Find highest kicker
+		# Populate best_cards: the 4 matching + best kicker
+		for card in all_cards:
+			if card.get_value() == four_of_a_kind:
+				result.best_cards.append(card)
 		for card in all_cards:
 			if card.get_value() != four_of_a_kind:
 				result.kickers.append(card.get_value())
+				result.best_cards.append(card)
 				break
 		return result
 		
@@ -109,6 +113,16 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 		result.kickers.clear()
 		result.kickers.append(three_of_a_kind)
 		result.kickers.append(pairs[0])
+		# Populate best_cards: 3 of the trips + 2 of the pair
+		var trips_added = 0
+		var pair_added = 0
+		for card in all_cards:
+			if card.get_value() == three_of_a_kind and trips_added < 3:
+				result.best_cards.append(card)
+				trips_added += 1
+			elif card.get_value() == pairs[0] and pair_added < 2:
+				result.best_cards.append(card)
+				pair_added += 1
 		return result
 		
 	# Check Flush
@@ -134,10 +148,15 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 	if three_of_a_kind != -1:
 		result.rank = HandRank.THREE_OF_A_KIND
 		result.kickers.append(three_of_a_kind)
+		# Populate best_cards: 3 matching + 2 best kickers
+		for card in all_cards:
+			if card.get_value() == three_of_a_kind:
+				result.best_cards.append(card)
 		var added_kickers = 0
 		for card in all_cards:
 			if card.get_value() != three_of_a_kind:
 				result.kickers.append(card.get_value())
+				result.best_cards.append(card)
 				added_kickers += 1
 				if added_kickers == 2: break
 		return result
@@ -147,11 +166,22 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 		result.rank = HandRank.TWO_PAIR
 		result.kickers.append(pairs[0])
 		result.kickers.append(pairs[1])
+		# Populate best_cards: 2+2 pair cards + best kicker
+		var p1_added = 0
+		var p2_added = 0
+		for card in all_cards:
+			if card.get_value() == pairs[0] and p1_added < 2:
+				result.best_cards.append(card)
+				p1_added += 1
+			elif card.get_value() == pairs[1] and p2_added < 2:
+				result.best_cards.append(card)
+				p2_added += 1
 		# Find the best 5th card that is NOT part of the two pairs
 		for card in all_cards:
 			var val = card.get_value()
 			if val != pairs[0] and val != pairs[1]:
 				result.kickers.append(val)
+				result.best_cards.append(card)
 				break
 		return result
 		
@@ -159,10 +189,15 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 	if pairs.size() == 1:
 		result.rank = HandRank.PAIR
 		result.kickers.append(pairs[0])
+		# Populate best_cards: 2 pair cards + 3 best kickers
+		for card in all_cards:
+			if card.get_value() == pairs[0]:
+				result.best_cards.append(card)
 		var added_kickers = 0
 		for card in all_cards:
 			if card.get_value() != pairs[0]:
 				result.kickers.append(card.get_value())
+				result.best_cards.append(card)
 				added_kickers += 1
 				if added_kickers == 3: break
 		return result
@@ -172,6 +207,7 @@ static func evaluate(hole_cards: Array[Card], community_cards: Array[Card]) -> E
 	for i in range(5):
 		if i < all_cards.size():
 			result.kickers.append(all_cards[i].get_value())
+			result.best_cards.append(all_cards[i])
 			
 	return result
 

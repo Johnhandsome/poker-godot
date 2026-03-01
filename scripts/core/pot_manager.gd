@@ -139,6 +139,25 @@ func get_total_pot() -> int:
 		total += bet
 	return total
 
+func get_pot_breakdown() -> Array:
+	# Returns array of {"label": "Main"/"Side 1"/etc, "amount": int}
+	var result = []
+	var idx = 0
+	for pot in pots:
+		if pot.amount == 0: continue
+		var label = "Main" if idx == 0 else "Side " + str(idx)
+		result.append({"label": label, "amount": pot.amount})
+		idx += 1
+	# Include uncommitted bets
+	var pending = 0
+	for bet in active_bets.values():
+		pending += bet
+	if pending > 0 and result.size() > 0:
+		result.back()["amount"] += pending
+	elif pending > 0:
+		result.append({"label": "Main", "amount": pending})
+	return result
+
 func distribute_pots(player_results: Dictionary) -> Dictionary:
 	# player_results maps player_id to their EvaluationResult
 	var payouts = {} # player_id: amount won

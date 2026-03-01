@@ -16,14 +16,12 @@ const PORT = 9050
 const DEFAULT_SERVER_IP = "127.0.0.1"
 const MAX_PLAYERS = 9
 const HEARTBEAT_INTERVAL = 3.0
-const RECONNECT_TIMEOUT = 10.0
 
 var players: Dictionary = {}          # peer_id -> { "name": "...", ... }
 var player_info: Dictionary = {"name": "Player"}
 var _heartbeat_timer: Timer
 var _last_pong_time: float = 0.0
 var _ping_ms: int = 0
-var _is_reconnecting: bool = false
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_player_connected)
@@ -87,7 +85,6 @@ func _on_connected_ok() -> void:
 	var peer_id = multiplayer.get_unique_id()
 	players[peer_id] = player_info.duplicate()
 	player_connected.emit(peer_id, player_info)
-	_is_reconnecting = false
 
 func _on_connected_fail() -> void:
 	multiplayer.multiplayer_peer = null

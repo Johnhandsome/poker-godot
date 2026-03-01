@@ -27,11 +27,25 @@ var btn_minimize_log: Button
 var card_display: HBoxContainer
 var chips_label: Label
 var _game_message_callable: Callable
+var hand_strength_label: Label
 var _turn_timer: Timer
 var _turn_timer_max: float = 30.0
 var _my_turn: bool = false
 var _action_bar: PanelContainer
 var _turn_pulse_tween: Tween = null
+var _muck_overlay: Control = null
+
+# Pre-action buttons
+var _btn_pre_fold: Button
+var _btn_pre_check_fold: Button
+var _btn_pre_check: Button
+var _current_pre_action: int = -1 # -1: None, 0: Fold, 1: Check/Fold, 2: Check/Call
+
+# Chat
+var _chat_panel: PanelContainer
+var _chat_vbox: VBoxContainer
+var _chat_scroll: ScrollContainer
+var _chat_input: LineEdit
 
 func _ready() -> void:
 	# Ambient sound
@@ -73,6 +87,7 @@ func _ready() -> void:
 		_game_message_callable = func(msg): _add_log_message("[color=white]" + msg + "[/color]")
 		gm.game_message.connect(_game_message_callable)
 		gm.blinds_level_changed.connect(_on_blinds_level_changed)
+		gm.show_muck_choice.connect(_on_show_muck_choice)
 
 	# Wait one frame for players to register
 	await get_tree().process_frame
@@ -119,6 +134,8 @@ func _exit_tree() -> void:
 			gm.game_message.disconnect(_game_message_callable)
 		if gm.blinds_level_changed.is_connected(_on_blinds_level_changed):
 			gm.blinds_level_changed.disconnect(_on_blinds_level_changed)
+		if gm.show_muck_choice.is_connected(_on_show_muck_choice):
+			gm.show_muck_choice.disconnect(_on_show_muck_choice)
 
 # ============================================================
 # UI SETUP
@@ -189,6 +206,29 @@ func _setup_ui() -> void:
 	btn_pause.pressed.connect(_show_pause_menu)
 	top_hbox.add_child(btn_pause)
 
+	# ---- PRE-ACTION BUTTONS (NEW) ----
+	var pre_action_hbox = HBoxContainer.new()
+	pre_action_hbox.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	pre_action_hbox.offset_left = -280; pre_action_hbox.offset_top = 60
+	pre_action_hbox.offset_right = -20; pre_action_hbox.offset_bottom = 95
+	pre_action_hbox.add_theme_constant_override("separation", 5)
+	canvas.add_child(pre_action_hbox)
+
+	_btn_pre_fold = PokerTheme.make_action_button(_tc("AUTO FOLD", "TỰ ĐỘNG FOLD"), PokerTheme.BTN_FOLD, Vector2(100, 30))
+	_btn_pre_fold.toggle_mode = true
+	_btn_pre_fold.pressed.connect(func(): _on_pre_action_toggled(0))
+	pre_action_hbox.add_child(_btn_pre_fold)
+
+	_btn_pre_check_fold = PokerTheme.make_action_button(_tc("CHECK / FOLD", "CHECK / FOLD"), PokerTheme.BTN_CHECK, Vector2(100, 30))
+	_btn_pre_check_fold.toggle_mode = true
+	_btn_pre_check_fold.pressed.connect(func(): _on_pre_action_toggled(1))
+	pre_action_hbox.add_child(_btn_pre_check_fold)
+
+	_btn_pre_check = PokerTheme.make_action_button(_tc("CHECK / CALL", "CHECK / CALL"), PokerTheme.BTN_CHECK, Vector2(100, 30))
+	_btn_pre_check.toggle_mode = true
+	_btn_pre_check.pressed.connect(func(): _on_pre_action_toggled(2))
+	pre_action_hbox.add_child(_btn_pre_check)
+
 	# ---- BOTTOM BAR ----
 	_action_bar = PanelContainer.new()
 	_action_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -217,6 +257,14 @@ func _setup_ui() -> void:
 	card_display.alignment = BoxContainer.ALIGNMENT_CENTER
 	card_display.add_theme_constant_override("separation", 6)
 	card_wrapper.add_child(card_display)
+
+	hand_strength_label = Label.new()
+	hand_strength_label.text = ""
+	hand_strength_label.add_theme_font_size_override("font_size", 11)
+	hand_strength_label.add_theme_color_override("font_color", PokerTheme.GOLD)
+	hand_strength_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hand_strength_label.custom_minimum_size = Vector2(140, 0)
+	bottom_hbox.add_child(hand_strength_label)
 
 	_add_vsep(bottom_hbox)
 
@@ -306,12 +354,90 @@ func _setup_ui() -> void:
 			await get_tree().create_timer(2.0).timeout
 			get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 		)
+		nm.chat_received.connect(_on_chat_received)
+	
+	# ---- CHAT PANEL (multiplayer) ----
+	_setup_chat_panel(canvas)
 
 func _add_vsep(parent: HBoxContainer) -> void:
 	var sep = VSeparator.new()
 	sep.custom_minimum_size = Vector2(1, 36)
 	sep.modulate = PokerTheme.BORDER_SUBTLE
 	parent.add_child(sep)
+
+func _setup_chat_panel(canvas: CanvasLayer) -> void:
+	_chat_panel = PanelContainer.new()
+	canvas.add_child(_chat_panel)
+	_chat_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT, true)
+	_chat_panel.offset_right = -16; _chat_panel.offset_bottom = -128
+	_chat_panel.offset_left = -280; _chat_panel.offset_top = -300
+	
+	var style = PokerTheme.make_panel_style(Color(0.03, 0.04, 0.06, 0.7), PokerTheme.BORDER_SUBTLE, PokerTheme.CORNER_SM, 1, 0)
+	_chat_panel.add_theme_stylebox_override("panel", style)
+	
+	var outer = VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 4)
+	_chat_panel.add_child(outer)
+	
+	var header = Label.new()
+	header.text = _tc("CHAT", "TRÒ CHUYỆN")
+	header.add_theme_font_size_override("font_size", 13)
+	header.add_theme_color_override("font_color", PokerTheme.TEXT_SECONDARY)
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	outer.add_child(header)
+	
+	_chat_scroll = ScrollContainer.new()
+	_chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_chat_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(_chat_scroll)
+	
+	var margin = MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 6)
+	margin.add_theme_constant_override("margin_right", 6)
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_chat_scroll.add_child(margin)
+	
+	_chat_vbox = VBoxContainer.new()
+	_chat_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_chat_vbox.alignment = BoxContainer.ALIGNMENT_END
+	margin.add_child(_chat_vbox)
+	
+	_chat_scroll.get_v_scroll_bar().changed.connect(func():
+		_chat_scroll.scroll_vertical = int(_chat_scroll.get_v_scroll_bar().max_value)
+	)
+	
+	_chat_input = LineEdit.new()
+	_chat_input.placeholder_text = _tc("Type message...", "Nhập tin nhắn...")
+	_chat_input.add_theme_font_size_override("font_size", 13)
+	_chat_input.max_length = 120
+	_chat_input.text_submitted.connect(_on_chat_submit)
+	outer.add_child(_chat_input)
+	
+	# Hide chat panel in singleplayer
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if gm and not gm.multiplayer_mode:
+		_chat_panel.hide()
+
+func _on_chat_submit(text: String) -> void:
+	if text.strip_edges().is_empty(): return
+	_chat_input.clear()
+	var nm = get_node("/root/NetworkManager") if has_node("/root/NetworkManager") else null
+	var sender = "Player " + str(multiplayer.get_unique_id()) if multiplayer.has_multiplayer_peer() else "You"
+	if nm:
+		nm.send_chat(sender, text)
+	else:
+		_on_chat_received(sender, text)
+
+func _on_chat_received(sender: String, message: String) -> void:
+	if not _chat_vbox: return
+	var lbl = RichTextLabel.new()
+	lbl.bbcode_enabled = true
+	lbl.fit_content = true
+	lbl.add_theme_font_size_override("normal_font_size", 13)
+	lbl.text = "[color=cyan]" + sender + ":[/color] " + message
+	_chat_vbox.add_child(lbl)
+	if _chat_vbox.get_child_count() > 50:
+		_chat_vbox.get_child(0).queue_free()
 
 func _setup_log_panel(canvas: CanvasLayer) -> void:
 	log_panel = PanelContainer.new()
@@ -414,6 +540,26 @@ func _toggle_log_size() -> void:
 		if log_header_box.get_child_count() > 1:
 			log_header_box.get_child(0).queue_free()
 
+func _unhandled_input(event: InputEvent) -> void:
+	if _my_turn and event.is_pressed():
+		if event.is_action_pressed("ui_text_submit") or event.is_action_pressed("ui_accept"):
+			# Pressing Enter/Space does Call/Check if possible, else Raise.
+			if not btn_call_check.disabled: _on_ui_action_pressed("Call")
+			elif not btn_raise.disabled: _on_ui_action_pressed("Raise")
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("ui_cancel"):
+			# Pressing Escape does Fold
+			if not btn_fold.disabled: _on_ui_action_pressed("Fold")
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("ui_left"):
+			# Left arrow to decrease raise amount
+			if raise_slider.editable: raise_slider.value -= raise_slider.step
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("ui_right"):
+			# Right arrow to increase raise amount
+			if raise_slider.editable: raise_slider.value += raise_slider.step
+			get_viewport().set_input_as_handled()
+
 # ============================================================
 # ACTION HANDLING
 # ============================================================
@@ -463,6 +609,30 @@ func _set_action_buttons_disabled(disabled: bool) -> void:
 	if btn_raise: btn_raise.disabled = disabled
 	if btn_all_in: btn_all_in.disabled = disabled
 	if raise_slider: raise_slider.editable = !disabled
+	
+	# Disable pre-action buttons if it's our turn and we are meant to act normally
+	if _btn_pre_fold: _btn_pre_fold.disabled = not disabled
+	if _btn_pre_check_fold: _btn_pre_check_fold.disabled = not disabled
+	if _btn_pre_check: _btn_pre_check.disabled = not disabled
+
+func _on_pre_action_toggled(action_type: int) -> void:
+	_play_ui_sound()
+
+	# If the same button is pressed, untoggle it.
+	if _current_pre_action == action_type:
+		_current_pre_action = -1
+		_btn_pre_fold.button_pressed = false
+		_btn_pre_check_fold.button_pressed = false
+		_btn_pre_check.button_pressed = false
+		return
+
+	_current_pre_action = action_type
+
+	# Ensure only one pre-action button is toggled at a time.
+	_btn_pre_fold.button_pressed = (action_type == 0)
+	_btn_pre_check_fold.button_pressed = (action_type == 1)
+	_btn_pre_check.button_pressed = (action_type == 2)
+
 
 func _on_raise_slider_changed(value: float) -> void:
 	if raise_value_label:
@@ -494,6 +664,14 @@ func _on_turn_timer_tick() -> void:
 		timer_bar.modulate = PokerTheme.ACCENT_GREEN.lerp(PokerTheme.GOLD, 1.0 - (pct - 0.5) * 2.0)
 	else:
 		timer_bar.modulate = PokerTheme.GOLD.lerp(PokerTheme.ACCENT_RED, 1.0 - pct * 2.0)
+	# Warning ticks at 10s and 5s remaining
+	var seconds_left = pct * _turn_timer_max
+	var synth_timer = get_node("/root/AudioSynthesizer") if has_node("/root/AudioSynthesizer") else null
+	if synth_timer:
+		if seconds_left <= 5.0 and fmod(seconds_left, 1.0) < _turn_timer.wait_time * 1.5:
+			synth_timer.play_tick()
+		elif seconds_left <= 10.0 and seconds_left > 5.0 and fmod(seconds_left, 2.0) < _turn_timer.wait_time * 1.5:
+			synth_timer.play_tick()
 
 # ============================================================
 # UI UPDATE CALLBACKS
@@ -548,16 +726,46 @@ func _animate_pot_label(target: int) -> void:
 	var start = _displayed_pot
 	_displayed_pot = target
 	if start == target:
-		pot_label.text = "POT: $" + str(target)
+		_update_pot_display(target)
 		return
 	var tw = create_tween()
 	tw.tween_method(func(v: float):
-		pot_label.text = "POT: $" + str(int(v))
+		_update_pot_display(int(v))
 	, float(start), float(target), 0.35)
+
+func _update_pot_display(total: int) -> void:
+	if not pot_label: return
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if gm and gm.pot_manager and not gm.multiplayer_mode:
+		var breakdown = gm.pot_manager.get_pot_breakdown()
+		if breakdown.size() > 1:
+			var parts = []
+			for b in breakdown:
+				parts.append(b["label"] + ": $" + str(b["amount"]))
+			pot_label.text = " | ".join(parts)
+			return
+	pot_label.text = "POT: $" + str(total)
 
 func _on_blinds_level_changed(level: int, sb: int, bb: int) -> void:
 	if blinds_label:
-		blinds_label.text = "BLINDS: " + str(sb) + "/" + str(bb) + " (Lvl " + str(level) + ")"
+		# Hands until next blind level
+		var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+		var hands_until := 0
+		if gm:
+			var current_hand = gm.hands_played
+			var next_level_hand = level * 5 + 1
+			hands_until = next_level_hand - current_hand
+		var next_sb = 10 * int(pow(2, level))
+		var next_bb = 20 * int(pow(2, level))
+		blinds_label.text = "BLINDS: " + str(sb) + "/" + str(bb) + " (Lvl " + str(level) + ") | Next: " + str(next_sb) + "/" + str(next_bb) + " in " + str(hands_until) + "h"
+		# Build full schedule tooltip
+		var tip := ""
+		for i in range(1, 8):
+			var s = 10 * int(pow(2, i - 1))
+			var b = 20 * int(pow(2, i - 1))
+			var marker = " <--" if i == level else ""
+			tip += "Lvl " + str(i) + ": " + str(s) + "/" + str(b) + marker + "\n"
+		blinds_label.tooltip_text = tip.strip_edges()
 		var tw = create_tween()
 		blinds_label.modulate = Color(1.6, 1.2, 1.2)
 		tw.tween_property(blinds_label, "modulate", Color.WHITE, 0.6)
@@ -607,35 +815,61 @@ func _on_player_turn(player_id: String) -> void:
 			_turn_pulse_tween.tween_property(turn_label, "modulate:a", 0.5, 0.6).set_trans(Tween.TRANS_SINE)
 			_turn_pulse_tween.tween_property(turn_label, "modulate:a", 1.0, 0.6).set_trans(Tween.TRANS_SINE)
 
-			_set_action_buttons_disabled(false)
-			_my_turn = true
-			timer_bar.value = 100
-			_turn_timer.start()
-
+			# Check pre-actions
+			var pre_action_taken = false
 			var amount_to_call = gm.current_bet - p.current_bet
-			if btn_call_check:
-				if amount_to_call > 0:
-					btn_call_check.text = "CALL $" + str(min(amount_to_call, p.chips)) if amount_to_call < p.chips else "CALL ALL-IN"
-					btn_call_check.modulate = Color(1.0, 0.85, 0.85)
-				else:
-					btn_call_check.text = "CHECK"
-					btn_call_check.modulate = Color.WHITE
-			if btn_raise:
-				btn_raise.disabled = (p.chips <= amount_to_call)
-			if btn_raise and raise_slider:
-				var min_r = gm.current_bet + gm.min_raise
-				raise_slider.max_value = p.chips + p.current_bet
-				raise_slider.min_value = min(min_r, raise_slider.max_value)
-				raise_slider.step = gm.big_blind
-				raise_slider.value = raise_slider.min_value
-				btn_raise.text = "RAISE"
-				if raise_value_label:
-					raise_value_label.text = "$" + str(int(raise_slider.value))
 
-			# Flash bottom bar
-			var tw_bar = create_tween()
-			tw_bar.tween_property(_action_bar, "modulate", Color(1.15, 1.10, 0.95), 0.15)
-			tw_bar.tween_property(_action_bar, "modulate", Color.WHITE, 0.25)
+			match _current_pre_action:
+				0: # Auto Fold
+					_on_ui_action_pressed("Fold")
+					pre_action_taken = true
+				1: # Check / Fold
+					if amount_to_call == 0:
+						_on_ui_action_pressed("Call") # This will be a check
+						pre_action_taken = true
+					else:
+						_on_ui_action_pressed("Fold")
+						pre_action_taken = true
+				2: # Check / Call
+					if amount_to_call >= 0:
+						_on_ui_action_pressed("Call")
+						pre_action_taken = true
+			
+			if pre_action_taken:
+				_current_pre_action = -1 # Reset pre-action
+				_btn_pre_fold.button_pressed = false
+				_btn_pre_check_fold.button_pressed = false
+				_btn_pre_check.button_pressed = false
+			else:
+				_set_action_buttons_disabled(false)
+				_my_turn = true
+				timer_bar.value = 100
+				_turn_timer.start()
+
+				# Update call/check button text
+				if btn_call_check:
+					if amount_to_call > 0:
+						btn_call_check.text = "CALL $" + str(min(amount_to_call, p.chips)) if amount_to_call < p.chips else "CALL ALL-IN"
+						btn_call_check.modulate = Color(1.0, 0.85, 0.85)
+					else:
+						btn_call_check.text = "CHECK"
+						btn_call_check.modulate = Color.WHITE
+				if btn_raise:
+					btn_raise.disabled = (p.chips <= amount_to_call)
+				if btn_raise and raise_slider:
+					var min_r = gm.current_bet + gm.min_raise
+					raise_slider.max_value = p.chips + p.current_bet
+					raise_slider.min_value = min(min_r, raise_slider.max_value)
+					raise_slider.step = gm.big_blind
+					raise_slider.value = raise_slider.min_value
+					btn_raise.text = "RAISE"
+					if raise_value_label:
+						raise_value_label.text = "$" + str(int(raise_slider.value))
+
+				# Flash bottom bar
+				var tw_bar = create_tween()
+				tw_bar.tween_property(_action_bar, "modulate", Color(1.15, 1.10, 0.95), 0.15)
+				tw_bar.tween_property(_action_bar, "modulate", Color.WHITE, 0.25)
 		else:
 			turn_label.text = _tc("Turn: ", "Lượt: ") + p.id
 			turn_label.add_theme_color_override("font_color", PokerTheme.ACCENT_BLUE)
@@ -645,6 +879,7 @@ func _on_player_turn(player_id: String) -> void:
 
 func _on_community_changed(_cards: Array) -> void:
 	_update_chips_label()
+	_update_hand_strength()
 
 func _update_chips_label() -> void:
 	if not chips_label: return
@@ -708,11 +943,14 @@ func _on_human_card_drawn(card: Card) -> void:
 	var tw = create_tween().set_parallel(true)
 	tw.tween_property(tex_rect, "modulate:a", 1.0, 0.2)
 	tw.tween_property(tex_rect, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_update_hand_strength()
 
 func _clear_card_display() -> void:
 	if not card_display: return
 	for child in card_display.get_children():
 		child.queue_free()
+	if hand_strength_label:
+		hand_strength_label.text = ""
 
 func _on_human_card_updated(card: Card) -> void:
 	if not card_display: return
@@ -721,6 +959,73 @@ func _on_human_card_updated(card: Card) -> void:
 		var last_tex_rect = children.back() as TextureRect
 		if last_tex_rect:
 			last_tex_rect.texture = CardTextureGenerator.get_card_texture(card)
+
+# ============================================================
+# SHOW / MUCK CHOICE
+# ============================================================
+func _on_show_muck_choice(_player_id: String) -> void:
+	var canvas = get_node_or_null("GameUI")
+	if not canvas: return
+	if _muck_overlay: return  # Already showing
+	
+	_muck_overlay = CenterContainer.new()
+	_muck_overlay.set_anchors_preset(Control.PRESET_CENTER)
+	_muck_overlay.offset_top = -60
+	canvas.add_child(_muck_overlay)
+	
+	var panel = PanelContainer.new()
+	var style = PokerTheme.make_panel_style(Color(0.06, 0.06, 0.1, 0.95), PokerTheme.GOLD.darkened(0.3), PokerTheme.CORNER_MD, 2, 16)
+	panel.add_theme_stylebox_override("panel", style)
+	_muck_overlay.add_child(panel)
+	
+	var vbox = VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+	
+	var lbl = Label.new()
+	lbl.text = _tc("You lost this hand. Show your cards?", "Bạn thua ván này. Lật bài?")
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", PokerTheme.TEXT_PRIMARY)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(lbl)
+	
+	var hbox = HBoxContainer.new()
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 16)
+	vbox.add_child(hbox)
+	
+	var btn_show = PokerTheme.make_action_button(_tc("SHOW", "LẬT BÀI"), PokerTheme.ACCENT_GREEN, Vector2(100, 36))
+	btn_show.pressed.connect(func():
+		_play_ui_sound()
+		# Cards will auto-reveal at showdown in physical_manager
+		_dismiss_muck_overlay()
+	)
+	hbox.add_child(btn_show)
+	
+	var btn_muck = PokerTheme.make_action_button(_tc("MUCK", "ÚP BÀI"), PokerTheme.ACCENT_RED, Vector2(100, 36))
+	btn_muck.pressed.connect(func():
+		_play_ui_sound()
+		# Tell physical_manager to fold our cards away
+		var pm = get_node_or_null("PhysicalManager") as PhysicalManager
+		var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+		if pm and gm:
+			pm._animate_fold_cards(gm._get_human_id())
+		_dismiss_muck_overlay()
+	)
+	hbox.add_child(btn_muck)
+	
+	PokerTheme.popup_animate(panel, self)
+	
+	# Auto-dismiss after 7 seconds (1 sec before the 8s timeout in game_manager)
+	get_tree().create_timer(7.0).timeout.connect(func():
+		_dismiss_muck_overlay()
+	)
+
+func _dismiss_muck_overlay() -> void:
+	if _muck_overlay and is_instance_valid(_muck_overlay):
+		_muck_overlay.queue_free()
+		_muck_overlay = null
 
 # ============================================================
 # GAME OVER OVERLAY
@@ -820,6 +1125,11 @@ func _show_pause_menu() -> void:
 	btn_settings.pressed.connect(func(): _play_ui_sound(); _show_settings_panel())
 	PokerTheme.attach_hover_anim(btn_settings, self)
 	vbox.add_child(btn_settings)
+
+	var btn_history = PokerTheme.make_menu_button(_tc("HAND HISTORY", "LỊCH SỬ VÁN"), Color(0.6, 0.5, 0.2))
+	btn_history.pressed.connect(func(): _play_ui_sound(); _show_hand_history())
+	PokerTheme.attach_hover_anim(btn_history, self)
+	vbox.add_child(btn_history)
 
 	var btn_quit = PokerTheme.make_menu_button(_tc("QUIT TO MENU", "VỀ MENU"), PokerTheme.ACCENT_RED)
 	btn_quit.pressed.connect(func():
@@ -923,6 +1233,76 @@ func _show_settings_panel() -> void:
 	if sm: master_slider.value_changed.emit(master_slider.value)
 	PokerTheme.popup_animate(panel, self)
 
+func _show_hand_history() -> void:
+	if has_node("HandHistoryPanel"): return
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if not gm: return
+	
+	var overlay = ColorRect.new()
+	overlay.name = "HandHistoryPanel"
+	overlay.color = Color(0, 0, 0, 0.8)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	
+	var center = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+	
+	var panel = PanelContainer.new()
+	panel.custom_minimum_size = Vector2(600, 500)
+	var style = PokerTheme.make_panel_style(Color(0.06, 0.06, 0.1, 0.97), PokerTheme.GOLD.darkened(0.5), PokerTheme.CORNER_LG, 2, 16)
+	panel.add_theme_stylebox_override("panel", style)
+	center.add_child(panel)
+	
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	panel.add_child(vbox)
+	
+	var title = Label.new()
+	title.text = _tc("HAND HISTORY", "LỊCH SỬ VÁN")
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", PokerTheme.GOLD)
+	vbox.add_child(title)
+	
+	var scroll = ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(560, 380)
+	vbox.add_child(scroll)
+	
+	var content = VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 12)
+	scroll.add_child(content)
+	
+	var hands = gm.hand_history.get_last_n(20)
+	if hands.size() == 0:
+		var empty_lbl = Label.new()
+		empty_lbl.text = _tc("No hands played yet.", "Chưa có ván nào.")
+		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_lbl.add_theme_color_override("font_color", PokerTheme.TEXT_SECONDARY)
+		content.add_child(empty_lbl)
+	else:
+		for h in hands:
+			var entry = Label.new()
+			entry.text = h.to_display_string()
+			entry.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			entry.add_theme_font_size_override("font_size", 13)
+			entry.add_theme_color_override("font_color", PokerTheme.TEXT_PRIMARY)
+			content.add_child(entry)
+			# Separator line
+			var sep = HSeparator.new()
+			sep.add_theme_color_override("separator", Color(1, 1, 1, 0.1))
+			content.add_child(sep)
+	
+	var btn_close = PokerTheme.make_menu_button(_tc("CLOSE", "ĐÓNG"), PokerTheme.ACCENT_RED, Vector2(160, 40))
+	btn_close.pressed.connect(func(): _play_ui_sound(); overlay.queue_free())
+	var btn_box = CenterContainer.new()
+	btn_box.add_child(btn_close)
+	vbox.add_child(btn_box)
+	
+	get_node("GameUI").add_child(overlay)
+	PokerTheme.popup_animate(panel, self)
+
 func _add_settings_slider(parent: VBoxContainer, label_text: String, min_v: float, max_v: float, step_v: float, current: float) -> HSlider:
 	var hbox = HBoxContainer.new()
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -952,3 +1332,48 @@ func _get_current_pot() -> int:
 		if gm.multiplayer_mode: return gm.client_pot
 		elif gm.pot_manager: return gm.pot_manager.get_total_pot()
 	return 0
+
+func _update_hand_strength() -> void:
+	if not hand_strength_label: return
+	var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
+	if not gm: return
+	
+	var human = null
+	if gm.multiplayer_mode:
+		human = gm._get_player_by_id(str(multiplayer.get_unique_id()))
+	else:
+		for p in gm.players:
+			if not p.is_ai:
+				human = p; break
+	
+	if not human or human.hole_cards.size() < 2:
+		hand_strength_label.text = ""
+		return
+	
+	if gm.community_cards.size() == 0:
+		# Pre-flop: show basic hand description
+		var c1 = human.hole_cards[0]
+		var c2 = human.hole_cards[1]
+		var v1 = c1.get_value()
+		var v2 = c2.get_value()
+		if v1 == v2:
+			hand_strength_label.text = _tc("Pocket Pair", "Đôi Bỏ Túi")
+		elif c1.suit == c2.suit:
+			hand_strength_label.text = _tc("Suited", "Đồng Chất")
+		elif abs(v1 - v2) == 1:
+			hand_strength_label.text = _tc("Connectors", "Liền Kề")
+		else:
+			hand_strength_label.text = ""
+	else:
+		# Post-flop: evaluate and show hand name
+		var result = HandEvaluator.evaluate(human.hole_cards, gm.community_cards)
+		var hand_name = HandEvaluator.format_hand_name(result.rank)
+		hand_strength_label.text = hand_name
+		
+		# Color code by strength
+		if result.rank >= HandEvaluator.HandRank.STRAIGHT:
+			hand_strength_label.add_theme_color_override("font_color", PokerTheme.ACCENT_GREEN)
+		elif result.rank >= HandEvaluator.HandRank.TWO_PAIR:
+			hand_strength_label.add_theme_color_override("font_color", PokerTheme.GOLD)
+		else:
+			hand_strength_label.add_theme_color_override("font_color", PokerTheme.TEXT_SECONDARY)

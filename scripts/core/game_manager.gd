@@ -1,5 +1,7 @@
 extends Node
 
+const HandHistoryClass = preload("res://scripts/core/hand_history.gd")
+
 # This script is attached to an Autoload singleton named GameManager
 
 enum GameState {
@@ -37,6 +39,7 @@ signal winners_declared(payouts: Dictionary, best_cards: Dictionary)
 signal player_eliminated(player_id: String)
 signal game_over(human_won: bool)
 signal blinds_level_changed(level: int, sb: int, bb: int)
+signal show_muck_choice(player_id: String)
 
 var current_state: GameState = GameState.WAITING_FOR_PLAYERS
 var players: Array = [] # Array of player objects (nodes)
@@ -64,6 +67,9 @@ var current_blind_level: int = 1
 
 var multiplayer_mode: bool = false
 
+# Hand history tracker
+var hand_history = HandHistoryClass.new()
+
 # --- GAME MODE SYSTEM ---
 enum GameMode {
 	PRACTICE,  # Solo vs bots
@@ -79,9 +85,38 @@ func _ready():
 	
 	if multiplayer.has_multiplayer_peer():
 		multiplayer_mode = true
+	
+	# Handle player disconnection mid-hand (multiplayer)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 func register_player(player_node):
 	players.append(player_node)
+
+func _on_peer_disconnected(peer_id: int) -> void:
+	if not multiplayer_mode or not multiplayer.is_server(): return
+	var p_id = str(peer_id)
+	var p = _get_player_by_id(p_id)
+	if not p: return
+	
+	# Auto-fold the disconnected player if they are in the current hand
+	if active_players.has(p_id) and not p.is_folded:
+		p.is_folded = true
+		emit_signal("game_message", p.id + _tc(" disconnected and was auto-folded.", " mất kết nối và bị fold tự động."))
+		emit_signal("action_received", p_id, PlayerAction.FOLD, 0)
+		sync_action.rpc(p_id, PlayerAction.FOLD, 0)
+		
+		# Check if only 1 player remains
+		var active_unfolded = 0
+		for pid in active_players:
+			if not _get_player_by_id(pid).is_folded:
+				active_unfolded += 1
+		if active_unfolded <= 1:
+			_end_betting_round()
+	
+	# Eliminate the player
+	p.is_eliminated = true
+	p.chips = 0
+	emit_signal("player_eliminated", p_id)
 	
 func start_game():
 	if multiplayer.has_multiplayer_peer():
@@ -169,6 +204,20 @@ func sync_game_over(winner_id: String):
 		emit_signal("game_over", true)
 	else:
 		emit_signal("game_over", false)
+
+@rpc("authority", "call_remote", "reliable")
+func sync_showdown_cards(data: Array):
+	# Remote clients receive real hole cards of all non-folded players at showdown
+	for entry in data:
+		var p = _get_player_by_id(entry["pid"])
+		if p:
+			# Replace dummy hole cards with real ones
+			var _card_idx = 0
+			for i in range(p.hole_cards.size()):
+				p.hole_cards[i].suit = entry["suit"]
+				p.hole_cards[i].rank = entry["rank"]
+				p.emit_signal("card_updated", p.hole_cards[i])
+				break # Each entry is one card
 
 # ------------------------
 
@@ -259,6 +308,9 @@ func _start_new_round():
 		
 	# Vì danh sách active_players đã xoay bắt đầu từ SB, dealer luôn là người cuối cùng trong active_players
 	dealer_index = active_players.size() - 1
+	
+	# Track hand history
+	hand_history.start_new_hand(hands_played, str(small_blind) + "/" + str(big_blind))
 	
 	_post_blinds()
 	_change_state(GameState.DEALING_HOLE_CARDS)
@@ -444,22 +496,67 @@ func _end_betting_round():
 		_handle_showdown()
 		return
 		
+	# Check if all unfolded players are all-in (run-out scenario)
+	var active_with_chips = 0
+	for pid in unfolded_players:
+		var px = _get_player_by_id(pid)
+		if not px.is_all_in and px.chips > 0:
+			active_with_chips += 1
+	
+	if active_with_chips <= 1 and unfolded_players.size() > 1:
+		# All-in run-out: deal remaining community cards with dramatic pauses
+		emit_signal("game_message", _tc("[color=red][b]ALL-IN! Running out the board...[/b][/color]", "[color=red][b]ALL-IN! Lật bài chung...[/b][/color]"))
+		
+		# Reveal all hole cards for the run-out
+		var _human_id = _get_human_id()
+		for pid in unfolded_players:
+			var px = _get_player_by_id(pid)
+			if px.is_ai:
+				# Emit hand_evaluated early so UI can flip cards
+				emit_signal("game_message", pid + ": " + px.hole_cards[0].get_name() + " " + px.hole_cards[1].get_name())
+		
+		var cards_needed = 5 - community_cards.size()
+		if cards_needed > 0:
+			# Set correct streets
+			var streets_to_deal = []
+			if community_cards.size() == 0:
+				streets_to_deal.append({"count": 3, "street": "Flop"})
+				if cards_needed > 3: streets_to_deal.append({"count": 1, "street": "Turn"})
+				if cards_needed > 4: streets_to_deal.append({"count": 1, "street": "River"})
+			elif community_cards.size() == 3:
+				streets_to_deal.append({"count": 1, "street": "Turn"})
+				if cards_needed > 1: streets_to_deal.append({"count": 1, "street": "River"})
+			elif community_cards.size() == 4:
+				streets_to_deal.append({"count": 1, "street": "River"})
+			
+			for st in streets_to_deal:
+				hand_history.set_street(st["street"])
+				await get_tree().create_timer(1.2).timeout
+				await _deal_community_cards_async(st["count"])
+		
+		_change_state(GameState.SHOWDOWN)
+		_handle_showdown()
+		return
+		
 	# Advance state
 	match current_state:
 		GameState.PREFLOP_BETTING:
 			_change_state(GameState.DEALING_FLOP)
+			hand_history.set_street("Flop")
 			await _deal_community_cards_async(3)
 			_change_state(GameState.FLOP_BETTING)
 			_reset_turn_order()
 			_start_betting_round()
 		GameState.FLOP_BETTING:
 			_change_state(GameState.DEALING_TURN)
+			hand_history.set_street("Turn")
 			await _deal_community_cards_async(1)
 			_change_state(GameState.TURN_BETTING)
 			_reset_turn_order()
 			_start_betting_round()
 		GameState.TURN_BETTING:
 			_change_state(GameState.DEALING_RIVER)
+			hand_history.set_street("River")
 			await _deal_community_cards_async(1)
 			_change_state(GameState.RIVER_BETTING)
 			_reset_turn_order()
@@ -506,6 +603,16 @@ func _handle_showdown():
 			
 		emit_signal("hand_evaluated", player_results)
 		
+		# Broadcast all non-folded players' hole cards to all clients at showdown
+		if multiplayer_mode and multiplayer.is_server():
+			var showdown_data = []
+			for p_id in active_players:
+				var p = _get_player_by_id(p_id)
+				if p.is_folded: continue
+				for card in p.hole_cards:
+					showdown_data.append({"pid": p_id, "suit": card.suit, "rank": card.rank})
+			sync_showdown_cards.rpc(showdown_data)
+		
 		# Update Human bluff factor based on showdown
 		var human_id = _get_human_id()
 		if player_results.has(human_id):
@@ -518,6 +625,25 @@ func _handle_showdown():
 				human_bluff_factor -= 0.15
 			human_bluff_factor = clamp(human_bluff_factor, 0.0, 2.0)
 		
+		# Check if human lost and can muck (only in singleplayer with >1 non-folded)
+		var unfolded_count = 0
+		for pid in active_players:
+			var px = _get_player_by_id(pid)
+			if not px.is_folded: unfolded_count += 1
+		
+		if not multiplayer_mode and unfolded_count > 1 and player_results.has(human_id):
+			# Determine if human is a winner
+			var best_result: HandEvaluator.EvaluationResult = null
+			for pid in player_results:
+				if best_result == null or player_results[pid].compare_to(best_result) > 0:
+					best_result = player_results[pid]
+			var human_result = player_results[human_id]
+			if human_result.compare_to(best_result) < 0:
+				# Human lost — offer show/muck
+				emit_signal("show_muck_choice", human_id)
+				# Wait for response (up to 8 seconds)
+				await get_tree().create_timer(8.0).timeout
+	
 	_change_state(GameState.DISTRIBUTING_POTS)
 	
 	var payouts = pot_manager.distribute_pots(player_results)
@@ -527,12 +653,27 @@ func _handle_showdown():
 			win_best_cards[p_id] = player_results[p_id].best_cards
 	emit_signal("winners_declared", payouts, win_best_cards)
 	
+	var winner_id_for_history := ""
+	var winner_hand_for_history := ""
+	var winner_pot_for_history := 0
 	for p_id in payouts:
 		var p = _get_player_by_id(p_id)
 		p.chips += payouts[p_id]
 		var id_str = _tc("You", "Bạn") if p.id == _get_human_id() else p.id
 		var won_str = _tc(" won $", " thắng $")
 		emit_signal("game_message", id_str + won_str + str(payouts[p_id]) + "!")
+		if payouts[p_id] > winner_pot_for_history:
+			winner_pot_for_history = payouts[p_id]
+			winner_id_for_history = p_id
+			if player_results.has(p_id):
+				winner_hand_for_history = player_results[p_id].hand_name
+	
+	# Finish hand history record
+	var cc_str := ""
+	for c in community_cards:
+		if cc_str != "": cc_str += " "
+		cc_str += c.get_name()
+	hand_history.finish_hand(cc_str, winner_id_for_history, winner_hand_for_history, winner_pot_for_history)
 		
 	# Lưu tiến trình bankroll vào ổ cứng
 	_save_human_progress()
@@ -645,6 +786,10 @@ func process_player_action(player_id: String, action: PlayerAction, amount: int 
 				current_bet = p.current_bet
 				
 	emit_signal("action_received", player_id, action, amount)
+	
+	# Record action in hand history
+	var action_names = {PlayerAction.FOLD: "Fold", PlayerAction.CHECK: "Check", PlayerAction.CALL: "Call", PlayerAction.RAISE: "Raise", PlayerAction.ALL_IN: "All-In"}
+	hand_history.record_action(player_id, action_names.get(action, "?"), amount)
 	
 	if multiplayer_mode and multiplayer.is_server():
 		sync_action.rpc(player_id, action, amount)

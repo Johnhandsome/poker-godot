@@ -49,6 +49,15 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 	var willingness = base_strength
 	var is_bluffing = false
 	
+	# --- DRAW AWARENESS (Task 9) ---
+	if game_manager.community_cards.size() >= 3 and game_manager.community_cards.size() < 5:
+		var draw_bonus = _evaluate_draw_potential(game_manager.community_cards)
+		willingness += draw_bonus
+	
+	# --- POSITION AWARENESS (Task 10) ---
+	var position_bonus = _evaluate_position(game_manager)
+	willingness += position_bonus
+	
 	match personality:
 		Personality.MANIAC:
 			willingness += 0.3 # Luôn đánh lố
@@ -96,7 +105,7 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 		# Nếu bài ngon, và không phải thể loại thụ động quá, đâm thêm tiền
 		if (willingness > 0.7 or is_bluffing) and chips > min_raise and personality != Personality.LOOSE_PASSIVE and personality != Personality.TIGHT_PASSIVE:
 			chosen_action = GameManager.PlayerAction.RAISE
-			chosen_amount = current_table_bet + min_raise * (randi() % 3 + 1)
+			chosen_amount = _calculate_raise_amount(game_manager, current_table_bet, min_raise, willingness)
 		else:
 			chosen_action = GameManager.PlayerAction.CHECK
 	else:
@@ -104,14 +113,14 @@ func _decide_action(current_table_bet: int, min_raise: int) -> void:
 		if willingness > 0.85 and chips > amount_to_call + min_raise:
 			# Bài cực mạnh, RAISE
 			chosen_action = GameManager.PlayerAction.RAISE
-			chosen_amount = current_table_bet + min_raise * (randi() % 4 + 1)
+			chosen_amount = _calculate_raise_amount(game_manager, current_table_bet, min_raise, willingness)
 		elif willingness > (pot_odds + 0.1): 
 			# Đủ mạnh để theo cược (so với rủi ro)
 			chosen_action = GameManager.PlayerAction.CALL
 		elif is_bluffing and chips > amount_to_call + min_raise:
 			# Lá gan lớn, tung Bluff
 			chosen_action = GameManager.PlayerAction.RAISE
-			chosen_amount = current_table_bet + min_raise * (randi() % 5 + 2)
+			chosen_amount = _calculate_raise_amount(game_manager, current_table_bet, min_raise, willingness + 0.3)
 		else:
 			# Bài yếu hoặc pot quá đắt -> FOLD
 			if amount_to_call < chips * 0.05 and willingness > 0.15: # Mồi cỏ con con thì Cứ Call xem lật
@@ -235,3 +244,121 @@ func _evaluate_hand_strength(community_cards: Array[Card]) -> float:
 					return 0.05
 				
 	return 0.0
+
+# --- DRAW AWARENESS (Task 9) ---
+func _evaluate_draw_potential(community_cards: Array[Card]) -> float:
+	if hole_cards.size() < 2: return 0.0
+	
+	var all_cards: Array[Card] = []
+	all_cards.append_array(hole_cards)
+	all_cards.append_array(community_cards)
+	
+	var draw_bonus = 0.0
+	
+	# Flush draw: 4 of the same suit
+	var suit_counts = {}
+	for card in all_cards:
+		if not suit_counts.has(card.suit):
+			suit_counts[card.suit] = 0
+		suit_counts[card.suit] += 1
+	
+	for suit in suit_counts:
+		if suit_counts[suit] == 4:
+			# Check if at least one hole card is in this suit
+			var has_hole_suit = false
+			for hc in hole_cards:
+				if hc.suit == suit: has_hole_suit = true
+			if has_hole_suit:
+				draw_bonus += 0.15  # Flush draw (~35% to hit)
+	
+	# Open-ended straight draw (OESD): check for 4 consecutive values
+	var values = []
+	for card in all_cards:
+		var v = card.get_value()
+		if not values.has(v):
+			values.append(v)
+	values.sort()
+	
+	# Check for 4-card sequences
+	for i in range(values.size() - 3):
+		if values[i+3] - values[i] == 3:
+			# 4 consecutive — check if hole cards contribute
+			var seq = [values[i], values[i+1], values[i+2], values[i+3]]
+			var hole_in_seq = false
+			for hc in hole_cards:
+				if seq.has(hc.get_value()): hole_in_seq = true
+			if hole_in_seq:
+				# Check if open-ended (not gutshot)
+				if values[i] > 2 and values[i+3] < 14:  # Not bottom or top blocked
+					draw_bonus += 0.12  # OESD (~31% to hit)
+				else:
+					draw_bonus += 0.06  # Gutshot-ish (~17%)
+	
+	# Reduce bonus on turn (fewer outs)
+	if community_cards.size() == 4:
+		draw_bonus *= 0.55
+	
+	return draw_bonus
+
+# --- POSITION AWARENESS (Task 10) ---
+func _evaluate_position(game_manager: Node) -> float:
+	var my_index = game_manager.active_players.find(id)
+	if my_index < 0: return 0.0
+	
+	var total = game_manager.active_players.size()
+	if total <= 2: return 0.0  # Heads-up, position less relevant
+	
+	# Position relative to dealer (last is best)
+	var relative_pos = float(my_index) / float(total - 1)  # 0.0 = earliest, 1.0 = latest
+	
+	# Late position bonus, early position penalty
+	if relative_pos >= 0.7:
+		return 0.08  # Late position advantage
+	elif relative_pos <= 0.3:
+		return -0.06  # Early position — tighter play
+	return 0.0
+
+# --- IMPROVED RAISE SIZING (Task 11) ---
+func _calculate_raise_amount(game_manager: Node, current_table_bet: int, min_raise: int, strength: float) -> int:
+	var total_pot = game_manager.pot_manager.get_total_pot()
+	var bb = game_manager.big_blind
+	var is_preflop = (game_manager.community_cards.size() == 0)
+	
+	var raise_amount: int
+	
+	if is_preflop:
+		# Pre-flop: 2.5x-3.5x BB base, personality affects multiplier
+		var mult = randf_range(2.5, 3.5)
+		match personality:
+			Personality.MANIAC: mult = randf_range(3.5, 6.0)
+			Personality.LOOSE_AGGRESSIVE: mult = randf_range(3.0, 4.5)
+			Personality.TIGHT_AGGRESSIVE: mult = randf_range(2.5, 3.5)
+		raise_amount = int(bb * mult)
+	else:
+		# Post-flop: percentage of pot, scaled by strength
+		var pot_pct = 0.0
+		if strength > 0.9:
+			pot_pct = randf_range(0.75, 1.0)  # Strong hand: 75-100% pot
+		elif strength > 0.7:
+			pot_pct = randf_range(0.5, 0.75)  # Medium-strong: 50-75% pot
+		else:
+			pot_pct = randf_range(0.33, 0.5)  # Value/bluff: 33-50% pot
+		
+		match personality:
+			Personality.MANIAC: pot_pct += randf_range(0.2, 0.5)
+			Personality.LOOSE_AGGRESSIVE: pot_pct += randf_range(0.1, 0.2)
+			Personality.TIGHT_PASSIVE: pot_pct *= 0.7
+		
+		raise_amount = max(int(total_pot * pot_pct), min_raise)
+	
+	# Ensure raise is at least min_raise above current bet
+	raise_amount = max(raise_amount, current_table_bet + min_raise)
+	
+	# Round to BB for cleaner numbers
+	if bb > 0:
+		raise_amount = int(round(float(raise_amount) / float(bb)) * bb)
+	
+	# Cap at our chip stack
+	raise_amount = min(raise_amount, chips + current_bet)
+	
+	return raise_amount
