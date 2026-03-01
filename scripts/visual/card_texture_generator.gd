@@ -39,15 +39,15 @@ static func get_card_texture(card: Card) -> Texture2D:
 		
 	var res_path = "res://assets/cards/" + rank_str + suit_str + ".png"
 	if ResourceLoader.exists(res_path):
-		var tex = load(res_path) as Texture2D
-		if tex:
-			_cache[key] = tex
-			return tex
+		var loaded_tex = load(res_path) as Texture2D
+		if loaded_tex:
+			_cache[key] = loaded_tex
+			return loaded_tex
 	
 	# Nếu ko tìm thấy file, fallback procedural tự vẽ
-	var tex = _create_card_texture(card)
-	_cache[key] = tex
-	return tex
+	var generated_tex = _create_card_texture(card)
+	_cache[key] = generated_tex
+	return generated_tex
 
 static func get_back_texture() -> Texture2D:
 	if _back_texture != null:
