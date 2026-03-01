@@ -40,6 +40,8 @@ var _btn_pre_fold: Button
 var _btn_pre_check_fold: Button
 var _btn_pre_check: Button
 var _current_pre_action: int = -1 # -1: None, 0: Fold, 1: Check/Fold, 2: Check/Call
+var _main_action_hbox: HBoxContainer
+var _pre_action_hbox: HBoxContainer
 
 # Chat
 var _chat_panel: PanelContainer
@@ -206,29 +208,6 @@ func _setup_ui() -> void:
 	btn_pause.pressed.connect(_show_pause_menu)
 	top_hbox.add_child(btn_pause)
 
-	# ---- PRE-ACTION BUTTONS (NEW) ----
-	var pre_action_hbox = HBoxContainer.new()
-	pre_action_hbox.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	pre_action_hbox.offset_left = -280; pre_action_hbox.offset_top = 60
-	pre_action_hbox.offset_right = -20; pre_action_hbox.offset_bottom = 95
-	pre_action_hbox.add_theme_constant_override("separation", 5)
-	canvas.add_child(pre_action_hbox)
-
-	_btn_pre_fold = PokerTheme.make_action_button(_tc("AUTO FOLD", "TỰ ĐỘNG FOLD"), PokerTheme.BTN_FOLD, Vector2(100, 30))
-	_btn_pre_fold.toggle_mode = true
-	_btn_pre_fold.pressed.connect(func(): _on_pre_action_toggled(0))
-	pre_action_hbox.add_child(_btn_pre_fold)
-
-	_btn_pre_check_fold = PokerTheme.make_action_button(_tc("CHECK / FOLD", "CHECK / FOLD"), PokerTheme.BTN_CHECK, Vector2(100, 30))
-	_btn_pre_check_fold.toggle_mode = true
-	_btn_pre_check_fold.pressed.connect(func(): _on_pre_action_toggled(1))
-	pre_action_hbox.add_child(_btn_pre_check_fold)
-
-	_btn_pre_check = PokerTheme.make_action_button(_tc("CHECK / CALL", "CHECK / CALL"), PokerTheme.BTN_CHECK, Vector2(100, 30))
-	_btn_pre_check.toggle_mode = true
-	_btn_pre_check.pressed.connect(func(): _on_pre_action_toggled(2))
-	pre_action_hbox.add_child(_btn_pre_check)
-
 	# ---- BOTTOM BAR ----
 	_action_bar = PanelContainer.new()
 	_action_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -277,24 +256,48 @@ func _setup_ui() -> void:
 
 	_add_vsep(bottom_hbox)
 
+	# Action area: normal controls and pre-actions share the same position
+	_main_action_hbox = HBoxContainer.new()
+	_main_action_hbox.add_theme_constant_override("separation", 10)
+	bottom_hbox.add_child(_main_action_hbox)
+
+	_pre_action_hbox = HBoxContainer.new()
+	_pre_action_hbox.add_theme_constant_override("separation", 8)
+	bottom_hbox.add_child(_pre_action_hbox)
+
+	_btn_pre_fold = PokerTheme.make_action_button(_tc("AUTO FOLD", "TỰ ĐỘNG FOLD"), PokerTheme.BTN_FOLD, Vector2(130, 40))
+	_btn_pre_fold.toggle_mode = true
+	_btn_pre_fold.pressed.connect(func(): _on_pre_action_toggled(0))
+	_pre_action_hbox.add_child(_btn_pre_fold)
+
+	_btn_pre_check_fold = PokerTheme.make_action_button(_tc("CHECK / FOLD", "CHECK / FOLD"), PokerTheme.BTN_CHECK, Vector2(130, 40))
+	_btn_pre_check_fold.toggle_mode = true
+	_btn_pre_check_fold.pressed.connect(func(): _on_pre_action_toggled(1))
+	_pre_action_hbox.add_child(_btn_pre_check_fold)
+
+	_btn_pre_check = PokerTheme.make_action_button(_tc("CHECK / CALL", "CHECK / CALL"), PokerTheme.BTN_CHECK, Vector2(130, 40))
+	_btn_pre_check.toggle_mode = true
+	_btn_pre_check.pressed.connect(func(): _on_pre_action_toggled(2))
+	_pre_action_hbox.add_child(_btn_pre_check)
+
 	# Action buttons
 	btn_fold = PokerTheme.make_action_button("FOLD", PokerTheme.BTN_FOLD)
 	btn_fold.pressed.connect(func(): _play_ui_sound(); _on_ui_action_pressed("Fold"))
-	bottom_hbox.add_child(btn_fold)
+	_main_action_hbox.add_child(btn_fold)
 
 	btn_call_check = PokerTheme.make_action_button("CHECK", PokerTheme.BTN_CHECK)
 	btn_call_check.pressed.connect(func(): _play_ui_sound(); _on_ui_action_pressed("Call"))
-	bottom_hbox.add_child(btn_call_check)
+	_main_action_hbox.add_child(btn_call_check)
 
 	btn_raise = PokerTheme.make_action_button("RAISE", PokerTheme.BTN_RAISE)
 	btn_raise.pressed.connect(func(): _play_ui_sound(); _on_ui_action_pressed("Raise"))
-	bottom_hbox.add_child(btn_raise)
+	_main_action_hbox.add_child(btn_raise)
 
 	# Raise container
 	var raise_container = VBoxContainer.new()
 	raise_container.custom_minimum_size = Vector2(240, 70)
 	raise_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	bottom_hbox.add_child(raise_container)
+	_main_action_hbox.add_child(raise_container)
 
 	raise_value_label = Label.new()
 	raise_value_label.text = "$40"
@@ -341,7 +344,9 @@ func _setup_ui() -> void:
 
 	btn_all_in = PokerTheme.make_action_button("ALL-IN", PokerTheme.BTN_ALLIN)
 	btn_all_in.pressed.connect(func(): _play_ui_sound(); _on_ui_action_pressed("AllIn"))
-	bottom_hbox.add_child(btn_all_in)
+	_main_action_hbox.add_child(btn_all_in)
+
+	_set_pre_action_mode(false)
 
 	# ---- LOG PANEL ----
 	_setup_log_panel(canvas)
@@ -591,6 +596,7 @@ func _on_ui_action_pressed(action_type: String) -> void:
 		"AllIn": human.receive_ui_input(GameManager.PlayerAction.ALL_IN, human.chips)
 
 	_set_action_buttons_disabled(true)
+	_set_pre_action_mode(false)
 	_my_turn = false
 	_turn_timer.stop()
 	timer_bar.value = 0
@@ -609,11 +615,15 @@ func _set_action_buttons_disabled(disabled: bool) -> void:
 	if btn_raise: btn_raise.disabled = disabled
 	if btn_all_in: btn_all_in.disabled = disabled
 	if raise_slider: raise_slider.editable = !disabled
-	
-	# Disable pre-action buttons if it's our turn and we are meant to act normally
-	if _btn_pre_fold: _btn_pre_fold.disabled = not disabled
-	if _btn_pre_check_fold: _btn_pre_check_fold.disabled = not disabled
-	if _btn_pre_check: _btn_pre_check.disabled = not disabled
+
+func _set_pre_action_mode(enabled: bool) -> void:
+	if _pre_action_hbox:
+		_pre_action_hbox.visible = enabled
+	if _main_action_hbox:
+		_main_action_hbox.visible = not enabled
+	if _btn_pre_fold: _btn_pre_fold.disabled = not enabled
+	if _btn_pre_check_fold: _btn_pre_check_fold.disabled = not enabled
+	if _btn_pre_check: _btn_pre_check.disabled = not enabled
 
 func _on_pre_action_toggled(action_type: int) -> void:
 	_play_ui_sound()
@@ -709,6 +719,7 @@ func _on_state_changed(new_state: int, _old_state: int) -> void:
 		_add_log_message("[color=#ffcc66]" + _tc("--- Showdown ---", "--- Lật Bài ---") + "[/color]", true)
 
 	_set_action_buttons_disabled(true)
+	_set_pre_action_mode(true)
 	_my_turn = false
 	_turn_timer.stop()
 	timer_bar.value = 0
@@ -803,11 +814,13 @@ func _on_player_turn(player_id: String) -> void:
 		turn_label.text = _tc("Turn: ", "Lượt: ") + p.id + _tc(" ...", " ...")
 		turn_label.add_theme_color_override("font_color", PokerTheme.ACCENT_GREEN.darkened(0.2))
 		_set_action_buttons_disabled(true)
+		_set_pre_action_mode(true)
 		_my_turn = false
 		_turn_timer.stop(); timer_bar.value = 0
 	else:
 		var my_id = "You" if not gm.multiplayer_mode else str(multiplayer.get_unique_id())
 		if p.id == my_id:
+			_set_pre_action_mode(false)
 			turn_label.text = _tc(">>> YOUR TURN <<<", ">>> LƯỢT CỦA BẠN <<<")
 			turn_label.add_theme_color_override("font_color", PokerTheme.GOLD_BRIGHT)
 			# Pulse animation
@@ -840,8 +853,10 @@ func _on_player_turn(player_id: String) -> void:
 				_btn_pre_fold.button_pressed = false
 				_btn_pre_check_fold.button_pressed = false
 				_btn_pre_check.button_pressed = false
+				_set_pre_action_mode(true)
 			else:
 				_set_action_buttons_disabled(false)
+				_set_pre_action_mode(false)
 				_my_turn = true
 				timer_bar.value = 100
 				_turn_timer.start()
@@ -874,6 +889,7 @@ func _on_player_turn(player_id: String) -> void:
 			turn_label.text = _tc("Turn: ", "Lượt: ") + p.id
 			turn_label.add_theme_color_override("font_color", PokerTheme.ACCENT_BLUE)
 			_set_action_buttons_disabled(true)
+			_set_pre_action_mode(true)
 			_my_turn = false
 			_turn_timer.stop(); timer_bar.value = 0
 

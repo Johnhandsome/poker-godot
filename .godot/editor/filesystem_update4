@@ -1,12 +1,4 @@
-res://scripts/main.gd
-res://scripts/core/game_manager.gd
-res://scripts/core/network_manager.gd
-res://scripts/core/settings_manager.gd
 res://scripts/ui/main_menu.gd
+res://scripts/core/game_manager.gd
+res://scripts/main.gd
 res://scripts/visual/table_builder.gd
-res://scripts/core/audio_synthesizer.gd
-res://scripts/core/hand_evaluator.gd
-res://scripts/core/pot_manager.gd
-res://scripts/physical/physical_card.gd
-res://scripts/players/ai_bot.gd
-res://scripts/visual/physical_manager.gd

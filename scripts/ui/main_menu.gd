@@ -98,9 +98,15 @@ func _ready() -> void:
 		var sm2 = get_node("/root/SaveManager") if has_node("/root/SaveManager") else null
 		if sm2 and sm2.get_chips() <= 0:
 			sm2.reset_save()
+		if multiplayer.has_multiplayer_peer():
+			multiplayer.multiplayer_peer = null
+		var nm2 = get_node("/root/NetworkManager") if has_node("/root/NetworkManager") else null
+		if nm2:
+			nm2.players.clear()
 		var gm = get_node("/root/GameManager") if has_node("/root/GameManager") else null
 		if gm:
 			gm.game_mode = gm.GameMode.PRACTICE
+			gm.multiplayer_mode = false
 		_fade_to_scene("res://scenes/main.tscn")
 	)
 	PokerTheme.attach_hover_anim(btn_practice, self)
@@ -649,10 +655,10 @@ func _show_multiplayer_panel(is_online_mode: bool = false) -> void:
 			ping_lbl.text = ""
 	)
 	overlay.add_child(_ping_timer)
-	_ping_timer.start()
 
 	overlay.add_child(panel)
 	add_child(overlay)
+	_ping_timer.start()
 	PokerTheme.popup_animate(panel, self)
 
 # ============================================================

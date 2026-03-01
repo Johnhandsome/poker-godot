@@ -239,8 +239,8 @@ var _player_nodes: Array = []
 func _setup_players() -> void:
 	# Check multiplayer mode and game mode
 	var nm = get_node("/root/NetworkManager")
-	var is_multiplayer = multiplayer.has_multiplayer_peer()
 	var gm_mode = game_manager.game_mode if game_manager else 0  # 0 = PRACTICE
+	var is_multiplayer = multiplayer.has_multiplayer_peer() and gm_mode != GameManager.GameMode.PRACTICE
 	
 	if is_multiplayer and gm_mode == GameManager.GameMode.ONLINE:
 		# --- ONLINE MODE: Human peers + AI bots to fill table ---

@@ -119,8 +119,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	emit_signal("player_eliminated", p_id)
 	
 func start_game():
-	if multiplayer.has_multiplayer_peer():
-		multiplayer_mode = true
+	multiplayer_mode = multiplayer.has_multiplayer_peer() and game_mode != GameMode.PRACTICE
 		
 	# Xoá các player rác từ lần chơi trước nếu chúng đã bị giải phóng (freed)
 	for i in range(players.size() - 1, -1, -1):
@@ -666,7 +665,7 @@ func _handle_showdown():
 			winner_pot_for_history = payouts[p_id]
 			winner_id_for_history = p_id
 			if player_results.has(p_id):
-				winner_hand_for_history = player_results[p_id].hand_name
+				winner_hand_for_history = HandEvaluator.format_hand_name(player_results[p_id].rank)
 	
 	# Finish hand history record
 	var cc_str := ""
